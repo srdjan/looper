@@ -111,7 +111,7 @@ if jq -e '.scripts.test' package.json &>/dev/null 2>&1; then
   TEST_EXIT=$?
 
   # Try to extract pass/fail counts from common test runners
-  TESTS_FAILED=$(echo "$TEST_OUT" | grep -cE '(FAIL|✗|✘|×|failed)' || echo "0")
+  TESTS_FAILED=$(echo "$TEST_OUT" | grep -E '(FAIL|✗|✘|×|failed)' | wc -l | tr -d ' ')
 
   if [ "$TEST_EXIT" -eq 0 ] && [ "$TESTS_FAILED" -eq 0 ]; then
     SCORE=$((SCORE + 30))

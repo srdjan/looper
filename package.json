@@ -1,0 +1,8 @@
+{
+  "name": "improvement-loop",
+  "version": "1.0.0",
+  "description": "Agentic Improvement Loop via Claude Code Stop hook",
+  "scripts": {
+    "test": "bash tests/test-suite.sh"
+  }
+}

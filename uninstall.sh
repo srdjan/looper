@@ -47,7 +47,7 @@ if [ -f "$SETTINGS" ] && command -v jq &>/dev/null; then
         to_entries | map(
           .value |= map(
             select(
-              .hooks | not or
+              (.hooks | not) or
               (.hooks | map(.command // "" | test("(session-start|pre-edit-guard|post-edit-check|stop-improve|state-utils)")) | any | not)
             )
           )
