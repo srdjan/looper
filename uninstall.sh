@@ -7,16 +7,11 @@
 
 set -euo pipefail
 
-HOOK_FILES=(
-  state-utils.sh
-  session-start.sh
-  pre-edit-guard.sh
-  post-edit-check.sh
-  stop-improve.sh
-)
-
 TARGET="${1:-.}"
 TARGET=$(cd "$TARGET" && pwd)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/.claude/hooks/hook-manifest.sh"
 
 echo ""
 echo "  Removing Agentic Improvement Loop from: $TARGET"

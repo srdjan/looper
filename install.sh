@@ -14,14 +14,6 @@
 
 set -euo pipefail
 
-HOOK_FILES=(
-  state-utils.sh
-  session-start.sh
-  pre-edit-guard.sh
-  post-edit-check.sh
-  stop-improve.sh
-)
-
 # ── Target directory ────────────────────────────────────────
 TARGET="${1:-.}"
 TARGET=$(cd "$TARGET" && pwd)
@@ -29,6 +21,8 @@ TARGET=$(cd "$TARGET" && pwd)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_SRC="$SCRIPT_DIR/.claude/hooks"
 SETTINGS_SRC="$SCRIPT_DIR/.claude/settings.json"
+# shellcheck source=/dev/null
+source "$HOOKS_SRC/hook-manifest.sh"
 
 echo ""
 echo "╔══════════════════════════════════════════════╗"

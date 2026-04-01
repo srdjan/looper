@@ -6,16 +6,11 @@ set -uo pipefail
 PASS=0
 FAIL=0
 ERRORS=""
-HOOK_FILES=(
-  state-utils.sh
-  session-start.sh
-  pre-edit-guard.sh
-  post-edit-check.sh
-  stop-improve.sh
-)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=/dev/null
+source "$PROJECT_DIR/.claude/hooks/hook-manifest.sh"
 COVERAGE_FILE="$PROJECT_DIR/coverage/coverage-summary.json"
 COVERAGE_DIR="$(dirname "$COVERAGE_FILE")"
 TEMP_STATE=""
