@@ -7,6 +7,14 @@
 
 set -euo pipefail
 
+HOOK_FILES=(
+  state-utils.sh
+  session-start.sh
+  pre-edit-guard.sh
+  post-edit-check.sh
+  stop-improve.sh
+)
+
 TARGET="${1:-.}"
 TARGET=$(cd "$TARGET" && pwd)
 
@@ -15,15 +23,7 @@ echo "  Removing Agentic Improvement Loop from: $TARGET"
 echo ""
 
 # ── Remove hook scripts ────────────────────────────────────-
-HOOKS=(
-  state-utils.sh
-  session-start.sh
-  pre-edit-guard.sh
-  post-edit-check.sh
-  stop-improve.sh
-)
-
-for hook in "${HOOKS[@]}"; do
+for hook in "${HOOK_FILES[@]}"; do
   FILE="$TARGET/.claude/hooks/$hook"
   if [ -f "$FILE" ]; then
     rm "$FILE"

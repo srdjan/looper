@@ -14,6 +14,14 @@
 
 set -euo pipefail
 
+HOOK_FILES=(
+  state-utils.sh
+  session-start.sh
+  pre-edit-guard.sh
+  post-edit-check.sh
+  stop-improve.sh
+)
+
 # ── Target directory ────────────────────────────────────────
 TARGET="${1:-.}"
 TARGET=$(cd "$TARGET" && pwd)
@@ -50,7 +58,7 @@ mkdir -p "$TARGET/.claude/state"
 
 # ── Copy hook scripts ──────────────────────────────────────-
 echo "  Copying hook scripts..."
-for hook in state-utils.sh session-start.sh pre-edit-guard.sh post-edit-check.sh stop-improve.sh; do
+for hook in "${HOOK_FILES[@]}"; do
   if [ -f "$HOOKS_SRC/$hook" ]; then
     cp "$HOOKS_SRC/$hook" "$TARGET/.claude/hooks/$hook"
     chmod +x "$TARGET/.claude/hooks/$hook"
@@ -69,18 +77,21 @@ if [ -f "$EXISTING" ]; then
   echo "    Found existing settings — merging hooks..."
 
   MERGED=$(jq -s '
-    # Deep merge hook arrays: for each event, concatenate arrays
-    .[0] as $existing | .[1] as $new |
-    ($existing.hooks // {}) as $eh |
-    ($new.hooks // {}) as $nh |
-    # Build merged hooks object
-    ([$eh, $nh] | map(keys) | add | unique) as $events |
-    reduce $events[] as $event (
-      {};
-      .[$event] = (($eh[$event] // []) + ($nh[$event] // []))
-    ) as $merged_hooks |
-    # Preserve all existing settings, override hooks
-    $existing * { hooks: $merged_hooks }
+    .[0] as $existing
+    | .[1] as $new
+    | ($existing.hooks // {}) as $existing_hooks
+    | ($new.hooks // {}) as $new_hooks
+    | (
+        [$existing_hooks, $new_hooks]
+        | map(keys)
+        | add
+        | unique
+        | reduce .[] as $event (
+            {};
+            .[$event] = (($existing_hooks[$event] // []) + ($new_hooks[$event] // []))
+          )
+      ) as $merged_hooks
+    | $existing * { hooks: $merged_hooks }
   ' "$EXISTING" "$SETTINGS_SRC")
 
   # Backup existing
@@ -119,7 +130,7 @@ echo ""
 echo "  Verifying..."
 ERRORS=0
 
-for hook in state-utils.sh session-start.sh pre-edit-guard.sh post-edit-check.sh stop-improve.sh; do
+for hook in "${HOOK_FILES[@]}"; do
   if [ -x "$TARGET/.claude/hooks/$hook" ]; then
     echo "    ✓ $hook is executable"
   else

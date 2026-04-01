@@ -21,6 +21,31 @@ source "$SCRIPT_DIR/state-utils.sh"
 
 INPUT=$(cat)
 
+append_gate_result() {
+  local symbol="$1"
+  local name="$2"
+  local detail="$3"
+  local awarded="$4"
+  local available="$5"
+  GATE_RESULTS="${GATE_RESULTS}  ${symbol} ${name}: ${detail} (${awarded}/${available})\n"
+}
+
+append_failure_block() {
+  local heading="$1"
+  local body="$2"
+  FAILURES="${FAILURES}\n── ${heading} ──\n${body}\n"
+}
+
+coverage_meets_target() {
+  local line_cov="$1"
+  awk -v line_cov="$line_cov" 'BEGIN { exit !(line_cov >= 80) }'
+}
+
+coverage_partial_score() {
+  local line_cov="$1"
+  awk -v line_cov="$line_cov" 'BEGIN { printf "%d", int((line_cov * 20) / 80) }'
+}
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # CIRCUIT BREAKER 1: stop_hook_active
 # If Claude was already sent back once by this hook and is
@@ -39,6 +64,7 @@ fi
 # Hard cap at MAX_ITERATIONS regardless of quality.
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ITERATION=$(read_state '.iteration')
+CURRENT_PASS=$((ITERATION + 1))
 if [ "$ITERATION" -ge "$MAX_ITERATIONS" ]; then
   write_state '.status' '"budget_exhausted"'
 
@@ -67,82 +93,79 @@ FAILURES=""
 GATE_RESULTS=""
 
 # ── Gate 1: TypeScript compilation (30 points) ──────────────
-echo "⏳ [Pass $((ITERATION + 1))/$MAX_ITERATIONS] Running typecheck..." >&2
+echo "⏳ [Pass $CURRENT_PASS/$MAX_ITERATIONS] Running typecheck..." >&2
 if [ -f tsconfig.json ]; then
   TC_OUT=$(npx tsc --noEmit --pretty false 2>&1 || true)
   TC_ERRORS=$(echo "$TC_OUT" | grep -c 'error TS' || echo "0")
   if [ "$TC_ERRORS" -eq 0 ]; then
     SCORE=$((SCORE + 30))
-    GATE_RESULTS="${GATE_RESULTS}  ✓ typecheck: pass (30/30)\n"
+    append_gate_result "✓" "typecheck" "pass" "30" "30"
   else
-    GATE_RESULTS="${GATE_RESULTS}  ✗ typecheck: $TC_ERRORS errors (0/30)\n"
-    # Show up to 10 errors for targeted fixing
-    FAILURES="${FAILURES}\n── TypeCheck Failures ──\n"
-    FAILURES="${FAILURES}$(echo "$TC_OUT" | grep 'error TS' | head -10)\n"
+    append_gate_result "✗" "typecheck" "$TC_ERRORS errors" "0" "30"
+    append_failure_block "TypeCheck Failures" "$(echo "$TC_OUT" | grep 'error TS' | head -10)"
   fi
 else
   # No tsconfig — skip, award points
   SCORE=$((SCORE + 30))
-  GATE_RESULTS="${GATE_RESULTS}  ○ typecheck: skipped — no tsconfig.json (30/30)\n"
+  append_gate_result "○" "typecheck" "skipped — no tsconfig.json" "30" "30"
 fi
 
 # ── Gate 2: Lint (20 points) ────────────────────────────────
-echo "⏳ [Pass $((ITERATION + 1))/$MAX_ITERATIONS] Running lint..." >&2
+echo "⏳ [Pass $CURRENT_PASS/$MAX_ITERATIONS] Running lint..." >&2
 if [ -f node_modules/.bin/eslint ]; then
   LINT_OUT=$(npx eslint . --ext .ts,.tsx --format compact 2>&1 || true)
   LINT_ERRORS=$(echo "$LINT_OUT" | grep -c ': Error -' || echo "0")
   if [ "$LINT_ERRORS" -eq 0 ]; then
     SCORE=$((SCORE + 20))
-    GATE_RESULTS="${GATE_RESULTS}  ✓ lint: pass (20/20)\n"
+    append_gate_result "✓" "lint" "pass" "20" "20"
   else
-    GATE_RESULTS="${GATE_RESULTS}  ✗ lint: $LINT_ERRORS errors (0/20)\n"
-    FAILURES="${FAILURES}\n── Lint Failures ──\n"
-    FAILURES="${FAILURES}$(echo "$LINT_OUT" | grep ': Error -' | head -10)\n"
+    append_gate_result "✗" "lint" "$LINT_ERRORS errors" "0" "20"
+    append_failure_block "Lint Failures" "$(echo "$LINT_OUT" | grep ': Error -' | head -10)"
   fi
 else
   SCORE=$((SCORE + 20))
-  GATE_RESULTS="${GATE_RESULTS}  ○ lint: skipped — eslint not installed (20/20)\n"
+  append_gate_result "○" "lint" "skipped — eslint not installed" "20" "20"
 fi
 
 # ── Gate 3: Tests (30 points) ───────────────────────────────
-echo "⏳ [Pass $((ITERATION + 1))/$MAX_ITERATIONS] Running tests..." >&2
+echo "⏳ [Pass $CURRENT_PASS/$MAX_ITERATIONS] Running tests..." >&2
 if jq -e '.scripts.test' package.json &>/dev/null 2>&1; then
-  TEST_OUT=$(npm test -- --reporter=dot 2>&1 || true)
-  TEST_EXIT=$?
+  if TEST_OUT=$(npm test -- --reporter=dot 2>&1); then
+    TEST_EXIT=0
+  else
+    TEST_EXIT=$?
+  fi
 
   # Try to extract pass/fail counts from common test runners
-  TESTS_FAILED=$(echo "$TEST_OUT" | grep -E '(FAIL|✗|✘|×|failed)' | wc -l | tr -d ' ')
+  TESTS_FAILED=$(printf '%s\n' "$TEST_OUT" | grep -E -c '(FAIL|✗|✘|×|failed)' || true)
 
   if [ "$TEST_EXIT" -eq 0 ] && [ "$TESTS_FAILED" -eq 0 ]; then
     SCORE=$((SCORE + 30))
-    GATE_RESULTS="${GATE_RESULTS}  ✓ test: pass (30/30)\n"
+    append_gate_result "✓" "test" "pass" "30" "30"
   else
-    GATE_RESULTS="${GATE_RESULTS}  ✗ test: failures detected (0/30)\n"
-    FAILURES="${FAILURES}\n── Test Failures ──\n"
-    FAILURES="${FAILURES}$(echo "$TEST_OUT" | tail -20)\n"
+    append_gate_result "✗" "test" "failures detected" "0" "30"
+    append_failure_block "Test Failures" "$(echo "$TEST_OUT" | tail -20)"
   fi
 else
-  GATE_RESULTS="${GATE_RESULTS}  ○ test: skipped — no test script (0/30)\n"
-  FAILURES="${FAILURES}\n── Missing Tests ──\n"
-  FAILURES="${FAILURES}No test script found in package.json. Add tests.\n"
+  append_gate_result "○" "test" "skipped — no test script" "0" "30"
+  append_failure_block "Missing Tests" "No test script found in package.json. Add tests."
 fi
 
 # ── Gate 4: Coverage (20 points) ────────────────────────────
-echo "⏳ [Pass $((ITERATION + 1))/$MAX_ITERATIONS] Checking coverage..." >&2
+echo "⏳ [Pass $CURRENT_PASS/$MAX_ITERATIONS] Checking coverage..." >&2
 COVERAGE_FILE="coverage/coverage-summary.json"
 if [ -f "$COVERAGE_FILE" ]; then
   LINE_COV=$(jq -r '.total.lines.pct // 0' "$COVERAGE_FILE" 2>/dev/null || echo "0")
   # Scale: 80%+ = full marks, below = proportional
-  if [ "$(echo "$LINE_COV >= 80" | bc -l 2>/dev/null || echo 0)" -eq 1 ]; then
+  if coverage_meets_target "$LINE_COV"; then
     SCORE=$((SCORE + 20))
-    GATE_RESULTS="${GATE_RESULTS}  ✓ coverage: ${LINE_COV}% (20/20)\n"
+    append_gate_result "✓" "coverage" "${LINE_COV}%" "20" "20"
   else
     # Proportional score: (coverage/80) * 20
-    PARTIAL=$(echo "$LINE_COV * 20 / 80" | bc -l 2>/dev/null | cut -d. -f1 || echo "0")
+    PARTIAL=$(coverage_partial_score "$LINE_COV")
     SCORE=$((SCORE + PARTIAL))
-    GATE_RESULTS="${GATE_RESULTS}  △ coverage: ${LINE_COV}% — need 80%+ ($PARTIAL/20)\n"
-    FAILURES="${FAILURES}\n── Coverage Gap ──\n"
-    FAILURES="${FAILURES}Line coverage: ${LINE_COV}%. Target: 80%.\n"
+    append_gate_result "△" "coverage" "${LINE_COV}% — need 80%+" "$PARTIAL" "20"
+    COVERAGE_FAILURE="Line coverage: ${LINE_COV}%. Target: 80%.\n"
     # Show uncovered files
     if command -v jq &>/dev/null; then
       UNCOVERED=$(jq -r 'to_entries[]
@@ -150,12 +173,13 @@ if [ -f "$COVERAGE_FILE" ]; then
         | select(.value.lines.pct < 80)
         | "\(.key): \(.value.lines.pct)%"' "$COVERAGE_FILE" 2>/dev/null | head -5 || true)
       if [ -n "$UNCOVERED" ]; then
-        FAILURES="${FAILURES}Uncovered files:\n$UNCOVERED\n"
+        COVERAGE_FAILURE="${COVERAGE_FAILURE}Uncovered files:\n$UNCOVERED"
       fi
     fi
+    append_failure_block "Coverage Gap" "$COVERAGE_FAILURE"
   fi
 else
-  GATE_RESULTS="${GATE_RESULTS}  ○ coverage: no coverage data — run tests with --coverage (0/20)\n"
+  append_gate_result "○" "coverage" "no coverage data — run tests with --coverage" "0" "20"
 fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -176,7 +200,7 @@ if [ "$SCORE" -eq "$TOTAL" ]; then
   echo "" >&2
   echo "══════════════════════════════════════════════" >&2
   echo "  IMPROVEMENT LOOP COMPLETE — ALL GATES PASS" >&2
-  echo "  Score: $SCORE/$TOTAL on pass $((ITERATION + 1))" >&2
+  echo "  Score: $SCORE/$TOTAL on pass $CURRENT_PASS" >&2
   echo "  Score history: $SCORES" >&2
   echo "══════════════════════════════════════════════" >&2
   exit 0

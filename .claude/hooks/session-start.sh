@@ -13,10 +13,10 @@ source "$SCRIPT_DIR/state-utils.sh"
 init_state
 
 # ── Everything below is injected into Claude's context ──────
-cat <<'CONTEXT'
+cat <<'CONTEXT' | sed "s/__MAX_ITERATIONS__/$MAX_ITERATIONS/g"
 ## Improvement Loop Active
 
-You are operating inside an improvement loop (max 10 passes).
+You are operating inside an improvement loop (max __MAX_ITERATIONS__ passes).
 After each response, a Stop hook evaluates your work against
 four quality gates:
 
@@ -30,7 +30,7 @@ and get another turn. Focus on fixing the specific failures
 reported — don't rewrite unrelated code.
 
 Each pass is numbered. You can see your current pass in the
-PreToolUse context injection. Budget: 10 passes total.
+PreToolUse context injection. Budget: __MAX_ITERATIONS__ passes total.
 CONTEXT
 
 # ── Dynamic project context ─────────────────────────────────

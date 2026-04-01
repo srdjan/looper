@@ -25,8 +25,7 @@ fi
 
 # ── Track touched files ────────────────────────────────────-
 # Deduplicate — only add if not already tracked
-ALREADY_TRACKED=$(jq -r --arg f "$FILE" '.files_touched | map(select(. == $f)) | length' "$STATE_FILE")
-if [ "$ALREADY_TRACKED" = "0" ]; then
+if ! jq -e --arg f "$FILE" '.files_touched | index($f)' "$STATE_FILE" >/dev/null; then
   append_state '.files_touched' "\"$FILE\""
 fi
 

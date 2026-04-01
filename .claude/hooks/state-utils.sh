@@ -3,8 +3,6 @@
 # Shared state management for the improvement loop.
 # Sources into other hooks — not executed directly.
 
-set -euo pipefail
-
 STATE_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/state"
 STATE_FILE="$STATE_DIR/loop-state.json"
 MAX_ITERATIONS=10
@@ -17,29 +15,44 @@ ensure_state_dir() {
 # ── Initialize fresh state ──────────────────────────────────
 init_state() {
   ensure_state_dir
-  cat > "$STATE_FILE" <<'EOF'
-{
-  "iteration": 0,
-  "max_iterations": 10,
-  "scores": [],
-  "checks": {
-    "typecheck": null,
-    "lint": null,
-    "test": null,
-    "coverage": null
-  },
-  "status": "running",
-  "files_touched": []
+  jq -n \
+    --argjson max_iterations "$MAX_ITERATIONS" \
+    '{
+      iteration: 0,
+      max_iterations: $max_iterations,
+      scores: [],
+      checks: {
+        typecheck: null,
+        lint: null,
+        test: null,
+        coverage: null
+      },
+      status: "running",
+      files_touched: []
+    }' > "$STATE_FILE"
 }
-EOF
+
+# ── Ensure state file exists ─────────────────────────────────
+ensure_state_file() {
+  if [ ! -f "$STATE_FILE" ]; then
+    init_state
+  fi
+}
+
+# ── Apply a jq update atomically ─────────────────────────────
+update_state() {
+  local filter="$1"
+  ensure_state_file
+
+  local tmp
+  tmp=$(mktemp)
+  jq "$filter" "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
 }
 
 # ── Read a field from state ─────────────────────────────────
 read_state() {
   local field="$1"
-  if [ ! -f "$STATE_FILE" ]; then
-    init_state
-  fi
+  ensure_state_file
   jq -r "$field" "$STATE_FILE"
 }
 
@@ -47,24 +60,14 @@ read_state() {
 write_state() {
   local field="$1"
   local value="$2"
-  if [ ! -f "$STATE_FILE" ]; then
-    init_state
-  fi
-  local tmp
-  tmp=$(mktemp)
-  jq "$field = $value" "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+  update_state "$field = $value"
 }
 
 # ── Append to an array field ────────────────────────────────
 append_state() {
   local field="$1"
   local value="$2"
-  if [ ! -f "$STATE_FILE" ]; then
-    init_state
-  fi
-  local tmp
-  tmp=$(mktemp)
-  jq "$field += [$value]" "$STATE_FILE" > "$tmp" && mv "$tmp" "$STATE_FILE"
+  update_state "$field += [$value]"
 }
 
 # ── Increment iteration counter ─────────────────────────────
