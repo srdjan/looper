@@ -11,7 +11,6 @@
         ]
       }
     ],
-
     "PreToolUse": [
       {
         "matcher": "Edit|MultiEdit|Write",
@@ -23,7 +22,6 @@
         ]
       }
     ],
-
     "PostToolUse": [
       {
         "matcher": "Edit|MultiEdit|Write",
@@ -35,7 +33,6 @@
         ]
       }
     ],
-
     "Stop": [
       {
         "hooks": [
@@ -45,6 +42,11 @@
           }
         ]
       }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(bash -x tests/test-suite.sh)"
     ]
   }
 }
