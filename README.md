@@ -1,6 +1,6 @@
 <img src="assets/looper-logo.png" alt="Looper Logo" width="50%">
 
-# Agentic Improvement Loop
+# Claude Code Native Improvement Loop, Built By Claude
 
 A Claude Code hooks-based workflow that runs quality gates after each response
 and gives Claude another turn when they fail. Up to 10 passes, then it stops.
@@ -140,6 +140,12 @@ Three independent exit conditions prevent runaway loops:
 | PreToolUse | per edit | JSON additionalContext | "Pass 3/10. Editing: src/foo.ts" |
 | PostToolUse | per edit | stdout → context | per-file lint/type errors |
 | Stop | per attempt | stderr → feedback | gate results + specific failures |
+
+
+>
+>#### Built By 
+> Claude & Srdjan
+>
 
 ## License
 
