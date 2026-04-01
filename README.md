@@ -8,38 +8,38 @@ and gives Claude another turn when they fail. Up to 10 passes, then it stops.
 ```
 ┌─ SessionStart ──────────────────────────────────────┐
 │  Initialize state file: iteration=0, scores=[]      │
-│  Inject project context into Claude's context        │
-└──────────────────────┬──────────────────────────────-┘
+│  Inject project context into Claude's context       │
+└──────────────────────┬─────────────────────────────-┘
                        ▼
             You: "implement feature X"
                        ▼
 ┌─ PreToolUse (Edit|Write) ───────────────────────────┐
-│  Block if iteration >= 10 (budget exhausted)         │
-│  Inject current iteration into Claude's context      │
-└──────────────────────┬──────────────────────────────-┘
+│  Block if iteration >= 10 (budget exhausted)        │
+│  Inject current iteration into Claude's context     │
+└──────────────────────┬─────────────────────────────-┘
                        ▼
          Claude writes/edits files
                        ▼
 ┌─ PostToolUse (Edit|Write) ──────────────────────────┐
-│  Run fast checks: format, lint                       │
-│  Record per-file results to state                    │
-└──────────────────────┬──────────────────────────────-┘
+│  Run fast checks: format, lint                      │
+│  Record per-file results to state                   │
+└──────────────────────┬─────────────────────────────-┘
                        ▼
         Claude finishes its response
                        ▼
 ┌─ Stop ──────────────────────────────────────────────┐
-│  Read state → current iteration                      │
-│  if stop_hook_active == true → exit 0 (breaker)      │
-│  if iteration >= 10          → exit 0 (budget)       │
-│  Run quality suite:                                  │
-│    typecheck → lint → test → coverage                │
-│  Score the run (0-100)                               │
-│  if score == 100             → exit 0 (done!)        │
-│  else                                                │
-│    increment iteration                               │
-│    write feedback to stderr                          │
-│    exit 2 → Claude gets another turn                 │
-└─────────────────────────────────────────────────────-┘
+│  Read state → current iteration                     │
+│  if stop_hook_active == true → exit 0 (breaker)     │
+│  if iteration >= 10          → exit 0 (budget)      │
+│  Run quality suite:                                 │
+│    typecheck → lint → test → coverage               │
+│  Score the run (0-100)                              │
+│  if score == 100             → exit 0 (done!)       │
+│  else                                               │
+│    increment iteration                              │
+│    write feedback to stderr                         │
+│    exit 2 → Claude gets another turn                │
+└────────────────────────────────────────────────────-┘
 ```
 
 ## Files
