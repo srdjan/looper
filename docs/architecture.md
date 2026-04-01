@@ -18,6 +18,43 @@ The installed hook wiring is defined in [`.claude/settings.json`](/Users/srdjans
 
 ## Hook Execution Flow
 
+```mermaid
+---
+title: Agentic Improvement Loop — Hook Flow
+---
+flowchart TD
+    START["SessionStart Hook"] -->|"init state.json\ninject context to Claude"| PROMPT["You: implement feature X"]
+
+    PROMPT --> CLAUDE["Claude reasons + plans"]
+
+    CLAUDE --> PRE{"PreToolUse\n(Edit|Write)"}
+
+    PRE -->|"iteration >= 10"| BLOCK["exit 2: BLOCKED\n'budget exhausted'"]
+    PRE -->|"iteration < 10"| ALLOW["exit 0: ALLOW\n+ inject pass N/10"]
+
+    ALLOW --> TOOL["Tool executes\n(file written/edited)"]
+
+    TOOL --> POST["PostToolUse Hook"]
+    POST -->|"format + lint\nstdout → Claude"| CLAUDE2["Claude continues\n(self-corrects if issues)"]
+
+    CLAUDE2 -->|"more edits needed"| PRE
+    CLAUDE2 -->|"Claude says 'done'"| STOP{"Stop Hook"}
+
+    STOP -->|"stop_hook_active\n== true"| DONE_BREAKER["exit 0: STOP\n(circuit breaker)"]
+    STOP -->|"iteration >= 10"| DONE_BUDGET["exit 0: STOP\n(budget exhausted)\nprint score history"]
+    STOP -->|"score == 100"| DONE_PERFECT["exit 0: STOP\n(all gates pass!)"]
+    STOP -->|"score < 100\niteration < 10"| LOOP["exit 2: CONTINUE\nincrement iteration\nfeedback → stderr"]
+
+    LOOP -->|"Claude gets\nanother turn"| CLAUDE
+
+    style START fill:#4a9eff,color:#fff
+    style DONE_BREAKER fill:#ff6b6b,color:#fff
+    style DONE_BUDGET fill:#ffa94d,color:#fff
+    style DONE_PERFECT fill:#51cf66,color:#fff
+    style LOOP fill:#845ef7,color:#fff
+    style BLOCK fill:#ff6b6b,color:#fff
+```
+
 ### 1. SessionStart
 
 [`.claude/hooks/session-start.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/session-start.sh) sources [`state-utils.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/state-utils.sh), calls `init_state`, and prints startup context to `stdout`.

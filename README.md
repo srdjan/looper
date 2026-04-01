@@ -7,41 +7,41 @@ and gives Claude another turn when they fail. Up to 10 passes, then it stops.
 
 ## Architecture
 
-```
-┌─ SessionStart ──────────────────────────────────────┐
-│  Initialize state file: iteration=0, scores=[]      │
-│  Inject project context into Claude's context       │
-└──────────────────────┬─────────────────────────────-┘
-                       ▼
-            You: "implement feature X"
-                       ▼
-┌─ PreToolUse (Edit|Write) ───────────────────────────┐
-│  Block if iteration >= 10 (budget exhausted)        │
-│  Inject current iteration into Claude's context     │
-└──────────────────────┬─────────────────────────────-┘
-                       ▼
-         Claude writes/edits files
-                       ▼
-┌─ PostToolUse (Edit|Write) ──────────────────────────┐
-│  Run fast checks: format, lint                      │
-│  Record per-file results to state                   │
-└──────────────────────┬─────────────────────────────-┘
-                       ▼
-        Claude finishes its response
-                       ▼
-┌─ Stop ──────────────────────────────────────────────┐
-│  Read state → current iteration                     │
-│  if stop_hook_active == true → exit 0 (breaker)     │
-│  if iteration >= 10          → exit 0 (budget)      │
-│  Run quality suite:                                 │
-│    typecheck → lint → test → coverage               │
-│  Score the run (0-100)                              │
-│  if score == 100             → exit 0 (done!)       │
-│  else                                               │
-│    increment iteration                              │
-│    write feedback to stderr                         │
-│    exit 2 → Claude gets another turn                │
-└────────────────────────────────────────────────────-┘
+```mermaid
+---
+title: Agentic Improvement Loop — Hook Flow
+---
+flowchart TD
+    START["SessionStart Hook"] -->|"init state.json\ninject context to Claude"| PROMPT["You: implement feature X"]
+
+    PROMPT --> CLAUDE["Claude reasons + plans"]
+
+    CLAUDE --> PRE{"PreToolUse\n(Edit|Write)"}
+
+    PRE -->|"iteration >= 10"| BLOCK["exit 2: BLOCKED\n'budget exhausted'"]
+    PRE -->|"iteration < 10"| ALLOW["exit 0: ALLOW\n+ inject pass N/10"]
+
+    ALLOW --> TOOL["Tool executes\n(file written/edited)"]
+
+    TOOL --> POST["PostToolUse Hook"]
+    POST -->|"format + lint\nstdout → Claude"| CLAUDE2["Claude continues\n(self-corrects if issues)"]
+
+    CLAUDE2 -->|"more edits needed"| PRE
+    CLAUDE2 -->|"Claude says 'done'"| STOP{"Stop Hook"}
+
+    STOP -->|"stop_hook_active\n== true"| DONE_BREAKER["exit 0: STOP\n(circuit breaker)"]
+    STOP -->|"iteration >= 10"| DONE_BUDGET["exit 0: STOP\n(budget exhausted)\nprint score history"]
+    STOP -->|"score == 100"| DONE_PERFECT["exit 0: STOP\n(all gates pass!)"]
+    STOP -->|"score < 100\niteration < 10"| LOOP["exit 2: CONTINUE\nincrement iteration\nfeedback → stderr"]
+
+    LOOP -->|"Claude gets\nanother turn"| CLAUDE
+
+    style START fill:#4a9eff,color:#fff
+    style DONE_BREAKER fill:#ff6b6b,color:#fff
+    style DONE_BUDGET fill:#ffa94d,color:#fff
+    style DONE_PERFECT fill:#51cf66,color:#fff
+    style LOOP fill:#845ef7,color:#fff
+    style BLOCK fill:#ff6b6b,color:#fff
 ```
 
 ## Files
