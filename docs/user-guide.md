@@ -29,7 +29,7 @@ Notes based on the current implementation:
 
 - The installer hard-fails if `jq` is missing.
 - The hooks call `npx`, `npm`, and `node`, so Node.js must be available in the project environment.
-- Coverage scoring uses `bc` when coverage is below the target. If `bc` is missing, partial coverage scoring falls back to `0`.
+- Coverage partial scoring uses `awk`, which is available on all POSIX systems.
 
 ## Installation
 
@@ -50,7 +50,7 @@ Install into another project:
 What the installer actually does:
 
 - creates `.claude/hooks/` and `.claude/state/`
-- copies five scripts into `.claude/hooks/`
+- copies six scripts into `.claude/hooks/`
 - makes those scripts executable
 - creates or merges `.claude/settings.json`
 - backs up an existing settings file to `.claude/settings.json.bak`
@@ -62,6 +62,7 @@ The merged hook wiring comes from [`.claude/settings.json`](/Users/srdjans/Code/
 
 If you do not want to run the installer, copy these files into the target project:
 
+- `.claude/hooks/hook-manifest.sh`
 - `.claude/hooks/state-utils.sh`
 - `.claude/hooks/session-start.sh`
 - `.claude/hooks/pre-edit-guard.sh`
@@ -340,7 +341,7 @@ Remove it from another project:
 
 The uninstaller in [`uninstall.sh`](/Users/srdjans/Code/improvement-loop/uninstall.sh) does the following:
 
-- removes the five hook scripts from `.claude/hooks/`
+- removes the six hook scripts from `.claude/hooks/`
 - deletes `.claude/state/`
 - removes matching hook commands from `.claude/settings.json`
 - restores `.claude/settings.json.bak` if the resulting `hooks` object becomes empty

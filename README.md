@@ -1,8 +1,7 @@
 # Agentic Improvement Loop
 
-A Claude Code hooks-based workflow that iteratively improves code quality
-up to 10 passes. Each pass raises the bar — Claude keeps working until
-all quality gates pass or the budget is exhausted.
+A Claude Code hooks-based workflow that runs quality gates after each response
+and gives Claude another turn when they fail. Up to 10 passes, then it stops.
 
 ## Architecture
 
@@ -49,12 +48,16 @@ all quality gates pass or the budget is exhausted.
 .claude/
 ├── settings.json          # Hook configuration
 ├── hooks/
+│   ├── hook-manifest.sh   # Shared hook file list (used by install, uninstall, tests)
+│   ├── state-utils.sh     # State read/write functions
 │   ├── session-start.sh   # Initialize state + inject context
 │   ├── pre-edit-guard.sh  # Budget gate + iteration context
 │   ├── post-edit-check.sh # Fast per-file quality checks
-│   └── stop-improve.sh   # Main improvement loop driver
+│   └── stop-improve.sh    # Improvement loop driver
 └── state/
     └── loop-state.json    # Iteration counter + scores (gitignored)
+tests/
+└── test-suite.sh          # Shell tests for state-utils, install, uninstall
 ```
 
 ## Install

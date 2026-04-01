@@ -2,7 +2,7 @@
 
 ## System Overview
 
-This project builds an in-session improvement loop around Claude Code hooks. The key mechanism is the Stop hook in [`.claude/hooks/stop-improve.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/stop-improve.sh):
+The project implements an in-session improvement loop around Claude Code hooks. The key mechanism is the Stop hook in [`.claude/hooks/stop-improve.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/stop-improve.sh):
 
 - if the hook exits `0`, Claude is allowed to stop
 - if the hook exits `2`, Claude receives feedback and gets another turn in the same session
@@ -188,10 +188,10 @@ Condition:
 - if `package.json` contains `scripts.test`, run `npm test -- --reporter=dot`
 - otherwise, award `0` and emit a "No test script found" failure
 
-Failure detection in the current implementation is output-based:
+Failure detection uses both exit code and output:
 
-- it searches for common failure markers such as `FAIL`, `✗`, `✘`, `×`, and `failed`
-- it also attempts to check the command exit status, but the command output is currently captured with `|| true`, so failure detection is effectively driven by output parsing
+- exit status is captured via `if/then/else` so a non-zero exit registers as failure
+- output is also scanned for common failure markers: `FAIL`, `✗`, `✘`, `×`, `failed`
 
 Failure details:
 
