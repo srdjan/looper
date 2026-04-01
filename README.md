@@ -1,3 +1,5 @@
+<img src="assets/looper-logo.png" alt="Looper Logo" width="50%">
+
 # Agentic Improvement Loop
 
 A Claude Code hooks-based workflow that runs quality gates after each response
