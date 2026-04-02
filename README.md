@@ -1,4 +1,6 @@
-<img src="assets/looper-logo.png" alt="Looper Logo" width="50%">
+<p align="center">
+  <img src="assets/looper-logo.png" alt="Looper Logo" width="50%">
+</p>
 
 # Claude Code Native Improvement Loop, Built By Claude
 
