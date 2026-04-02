@@ -31,8 +31,8 @@ flowchart TD
 
     STOP -->|"stop_hook_active\n== true"| DONE_BREAKER["exit 0: STOP\n(circuit breaker)"]
     STOP -->|"iteration >= 10"| DONE_BUDGET["exit 0: STOP\n(budget exhausted)\nprint score history"]
-    STOP -->|"score == 100"| DONE_PERFECT["exit 0: STOP\n(all gates pass!)"]
-    STOP -->|"score < 100\niteration < 10"| LOOP["exit 2: CONTINUE\nincrement iteration\nfeedback → stderr"]
+    STOP -->|"score == TOTAL"| DONE_PERFECT["exit 0: STOP\n(all gates pass!)"]
+    STOP -->|"score < TOTAL\niteration < 10"| LOOP["exit 2: CONTINUE\nincrement iteration\nfeedback → stderr"]
 
     LOOP -->|"Claude gets\nanother turn"| CLAUDE
 
@@ -48,18 +48,20 @@ flowchart TD
 
 ```
 .claude/
-├── settings.json          # Hook configuration
+├── settings.json              # Hook configuration
+├── looper.json                # Gate config — customize per project
 ├── hooks/
-│   ├── hook-manifest.sh   # Shared hook file list (used by install, uninstall, tests)
-│   ├── state-utils.sh     # State read/write functions
-│   ├── session-start.sh   # Initialize state + inject context
-│   ├── pre-edit-guard.sh  # Budget gate + iteration context
-│   ├── post-edit-check.sh # Fast per-file quality checks
-│   └── stop-improve.sh    # Improvement loop driver
+│   ├── hook-manifest.sh       # Shared hook file list (installer, uninstaller, tests)
+│   ├── state-utils.sh         # State read/write functions
+│   ├── session-start.sh       # Initialize state + inject context
+│   ├── pre-edit-guard.sh      # Budget gate + iteration context
+│   ├── post-edit-check.sh     # Fast per-file quality checks
+│   ├── check-coverage.sh      # Default coverage gate helper
+│   └── stop-improve.sh        # Improvement loop driver
 └── state/
-    └── loop-state.json    # Iteration counter + scores (gitignored)
+    └── loop-state.json        # Iteration counter + scores (gitignored)
 tests/
-└── test-suite.sh          # Shell tests for state-utils, install, uninstall
+└── test-suite.sh              # Shell tests for state-utils, install, uninstall
 ```
 
 ## Install
@@ -74,7 +76,7 @@ chmod +x install.sh
 
 Or manually copy `.claude/` into your project root.
 
-**Requirements:** `jq`, `node`/`npm` (for the quality gates).
+**Requirements:** `jq` (the installer auto-installs it on macOS/apt systems), plus whatever your gates need. The defaults use `node`/`npm`.
 
 ## Uninstall
 
@@ -82,8 +84,7 @@ Or manually copy `.claude/` into your project root.
 ./uninstall.sh /path/to/your/project
 ```
 
-Cleanly removes hook scripts, state directory, and settings entries.
-Restores your `settings.json` backup if hooks were merged.
+Removes hook scripts, state directory, and settings entries. Restores your `settings.json` backup if hooks were merged.
 
 ## Usage
 
@@ -95,10 +96,10 @@ claude
 > implement a user avatar upload endpoint with validation
 
 # Claude works. After each "done" attempt, the Stop hook:
-#   - Runs typecheck, lint, tests, coverage
-#   - Scores the result (0-100)
-#   - If < 100: feeds failures back, Claude continues
-#   - If = 100 or iteration = 10: lets Claude stop
+#   - Runs each gate command, passes if exit 0
+#   - Scores the result (sum of passing gate weights)
+#   - If < total: feeds failures back, Claude continues
+#   - If = total or iteration = 10: lets Claude stop
 #   - Score history is recorded: [40, 60, 80, 100]
 ```
 
@@ -117,33 +118,33 @@ Edit `.claude/looper.json`:
 }
 ```
 
-Replace the gate commands with whatever your stack uses. Any command that exits `0` on success works.
+Replace the gate commands with whatever your stack uses. Any command that exits `0` on success works. The loop stops early when the sum of passing weights equals the sum of all weights.
 
 ## Circuit Breakers
 
 Three independent exit conditions prevent runaway loops:
 
-1. **`stop_hook_active`** — Claude tried to stop, got pushed back,
+1. **`stop_hook_active`**: Claude tried to stop, got pushed back,
    and is trying to stop again on the same turn. Let it go.
    Without this: infinite loop.
 
-2. **`iteration >= MAX_ITERATIONS`** — hard budget cap. The PreToolUse
+2. **`iteration >= MAX_ITERATIONS`**: hard budget cap. The PreToolUse
    hook also enforces this by blocking further edits.
 
-3. **`score == 100`** — all four quality gates pass. Mission complete.
+3. **`score == TOTAL`**: all gates pass. Mission complete.
 
 ## How Feedback Flows
 
 | Hook | When | Feedback channel | Claude sees |
 |------|------|-----------------|-------------|
-| SessionStart | once | stdout → context | project state, loop rules |
+| SessionStart | once | stdout → context | project state, loop rules, gate list |
 | PreToolUse | per edit | JSON additionalContext | "Pass 3/10. Editing: src/foo.ts" |
 | PostToolUse | per edit | stdout → context | per-file lint/type errors |
 | Stop | per attempt | stderr → feedback | gate results + specific failures |
 
 
 >
->#### Built By 
+>#### Built By
 > Claude & Srdjan
 >
 

@@ -2,14 +2,14 @@
 
 ## System Overview
 
-The project implements an in-session improvement loop around Claude Code hooks. The key mechanism is the Stop hook in [`.claude/hooks/stop-improve.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/stop-improve.sh):
+The project implements an in-session improvement loop around Claude Code hooks. The key mechanism is the Stop hook in `.claude/hooks/stop-improve.sh`:
 
 - if the hook exits `0`, Claude is allowed to stop
 - if the hook exits `2`, Claude receives feedback and gets another turn in the same session
 
-That design keeps all work inside one Claude session instead of rebuilding state in an external supervisor. The project description in [`blog-post.md`](/Users/srdjans/Code/improvement-loop/blog-post.md) calls this out explicitly as the reason the loop can stay "in session" while preserving the full working context.
+That design keeps all work inside one Claude session rather than rebuilding state in an external supervisor.
 
-The installed hook wiring is defined in [`.claude/settings.json`](/Users/srdjans/Code/improvement-loop/.claude/settings.json):
+The installed hook wiring is defined in `.claude/settings.json`:
 
 - `SessionStart` for `new`
 - `PreToolUse` for `Edit|MultiEdit|Write`
@@ -42,8 +42,8 @@ flowchart TD
 
     STOP -->|"stop_hook_active\n== true"| DONE_BREAKER["exit 0: STOP\n(circuit breaker)"]
     STOP -->|"iteration >= 10"| DONE_BUDGET["exit 0: STOP\n(budget exhausted)\nprint score history"]
-    STOP -->|"score == 100"| DONE_PERFECT["exit 0: STOP\n(all gates pass!)"]
-    STOP -->|"score < 100\niteration < 10"| LOOP["exit 2: CONTINUE\nincrement iteration\nfeedback → stderr"]
+    STOP -->|"score == TOTAL"| DONE_PERFECT["exit 0: STOP\n(all gates pass!)"]
+    STOP -->|"score < TOTAL\niteration < 10"| LOOP["exit 2: CONTINUE\nincrement iteration\nfeedback → stderr"]
 
     LOOP -->|"Claude gets\nanother turn"| CLAUDE
 
@@ -57,21 +57,21 @@ flowchart TD
 
 ### 1. SessionStart
 
-[`.claude/hooks/session-start.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/session-start.sh) sources [`state-utils.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/state-utils.sh), calls `init_state`, and prints startup context to `stdout`.
+`.claude/hooks/session-start.sh` sources `state-utils.sh`, calls `init_state`, reads gate config from `.claude/looper.json`, and prints startup context to `stdout`.
 
-The context currently includes:
+The context includes:
 
-- loop rules and default gates
+- loop rules and the configured gate list with weights
 - current git branch
 - installed Node version
 - package scripts from `package.json`
 - discovered TypeScript test files
 
-Because `stdout` from this hook becomes Claude context, this is the initial prompt-shaping layer for the loop.
+stdout from this hook becomes Claude's context for the session.
 
 ### 2. PreToolUse
 
-[`.claude/hooks/pre-edit-guard.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/pre-edit-guard.sh) runs before `Edit`, `MultiEdit`, and `Write`.
+`.claude/hooks/pre-edit-guard.sh` runs before `Edit`, `MultiEdit`, and `Write`.
 
 It does three things:
 
@@ -95,9 +95,9 @@ This hook also appends the edited file path to `files_touched` if it has not bee
 
 ### 3. PostToolUse
 
-[`.claude/hooks/post-edit-check.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/post-edit-check.sh) runs after `Edit`, `MultiEdit`, and `Write`.
+`.claude/hooks/post-edit-check.sh` runs after `Edit`, `MultiEdit`, and `Write`.
 
-It only checks `.ts` and `.tsx` files. The goal is fast feedback, not full project validation.
+It only checks `.ts` and `.tsx` files. The goal is fast feedback before the full Stop evaluation.
 
 Current checks:
 
@@ -105,29 +105,30 @@ Current checks:
 - `eslint` on the edited file
 - `tsc --noEmit --pretty false "$FILE"`
 
-The hook writes human-readable results to `stdout`, which means the next Claude turn gets immediate, local feedback such as:
+The hook writes human-readable results to `stdout`, so the next Claude turn gets immediate local feedback such as:
 
 - `✓ src/foo.ts: format, lint, syntax all clean`
 - a short list of lint or TypeScript errors
 
 ### 4. Stop
 
-[`.claude/hooks/stop-improve.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/stop-improve.sh) is the control loop.
+`.claude/hooks/stop-improve.sh` is the control loop.
 
 Execution order:
 
 1. read hook input JSON from `stdin`
 2. check `stop_hook_active`
 3. check iteration budget
-4. run quality gates
-5. record score and partial gate state
-6. stop on perfect score or continue on imperfect score
+4. load gate config from `.claude/looper.json`
+5. run each gate command, pass if exit 0
+6. record score and per-gate pass/fail
+7. stop on perfect score or continue on imperfect score
 
-Unlike `PostToolUse`, this hook writes its feedback to `stderr`. In this project, `stderr` is the channel used for retry-driving feedback at the end of a response.
+Unlike `PostToolUse`, this hook writes its feedback to `stderr`, which is the channel used for retry-driving feedback at the end of a response.
 
 ## State Management
 
-Shared state lives in [`.claude/hooks/state-utils.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/state-utils.sh).
+Shared state lives in `.claude/hooks/state-utils.sh`.
 
 ### Location
 
@@ -145,16 +146,13 @@ Using `CLAUDE_PROJECT_DIR` keeps the hook scripts relocatable after installation
   "iteration": 0,
   "max_iterations": 10,
   "scores": [],
-  "checks": {
-    "typecheck": null,
-    "lint": null,
-    "test": null,
-    "coverage": null
-  },
+  "checks": {},
   "status": "running",
   "files_touched": []
 }
 ```
+
+`checks` is populated dynamically after each Stop pass, with one key per configured gate name set to `true` or `false`.
 
 ### Lifecycle
 
@@ -169,95 +167,48 @@ During edits:
 During Stop evaluation:
 
 - `append_state '.scores' "$SCORE"` records each pass score
+- `write_state '.checks' ...` records per-gate pass/fail for the current pass
 - `increment_iteration` advances the pass counter after imperfect runs
 - `write_state '.status' ...` records terminal states
 
-Observed status values in the current implementation:
+Observed status values:
 
 - `running`
 - `complete`
 - `budget_exhausted`
 - `breaker_tripped`
 
-Implementation note:
+`max_iterations` is read from `.claude/looper.json` at startup; both initialization and runtime budget checks use the same `MAX_ITERATIONS` shell variable.
 
-- `checks.typecheck`, `checks.lint`, and `checks.test` are updated by `stop-improve.sh`
-- `checks.coverage` is initialized in state but is not currently written back after evaluation
-- `max_iterations` is written from the value read out of `.claude/looper.json` at startup; both initialization and runtime budget checks use the same `MAX_ITERATIONS` shell variable
+## Gate Config
 
-## Quality Gates And Scoring
+Gates are defined in `.claude/looper.json`:
 
-The Stop hook uses a `100` point model:
-
-- typecheck: `30`
-- lint: `20`
-- test: `30`
-- coverage: `20`
-
-### Typecheck
-
-Condition:
-
-- if `tsconfig.json` exists, run `npx tsc --noEmit --pretty false`
-- if no TypeScript errors are found, award `30`
-- if `tsconfig.json` is missing, skip the gate and still award `30`
-
-Failure details:
-
-- the hook captures up to 10 `error TS` lines
-
-### Lint
-
-Condition:
-
-- if `node_modules/.bin/eslint` exists, run `npx eslint . --ext .ts,.tsx --format compact`
-- if no compact-format errors are found, award `20`
-- if ESLint is missing, skip the gate and still award `20`
-
-Failure details:
-
-- the hook scans for `: Error -` lines and includes up to 10 of them
-
-### Test
-
-Condition:
-
-- if `package.json` contains `scripts.test`, run `npm test -- --reporter=dot`
-- otherwise, award `0` and emit a "No test script found" failure
-
-Failure detection uses both exit code and output:
-
-- exit status is captured via `if/then/else` so a non-zero exit registers as failure
-- output is also scanned for common failure markers: `FAIL`, `✗`, `✘`, `×`, `failed`
-
-Failure details:
-
-- the hook appends the last 20 lines of test output
-
-### Coverage
-
-Condition:
-
-- read `coverage/coverage-summary.json`
-- inspect `.total.lines.pct`
-- `80%` or higher awards the full `20`
-- below `80%` awards proportional partial credit
-- missing coverage data awards `0`
-
-Proportional scoring formula:
-
-```text
-floor(line_coverage * 20 / 80)
+```json
+{
+  "max_iterations": 10,
+  "gates": [
+    { "name": "typecheck", "command": "npx tsc --noEmit --pretty false", "weight": 30, "skip_if_missing": "tsconfig.json" },
+    { "name": "lint",      "command": "npx eslint . --ext .ts,.tsx",     "weight": 20, "skip_if_missing": "node_modules/.bin/eslint" },
+    { "name": "test",      "command": "npm test",                        "weight": 30 },
+    { "name": "coverage",  "command": "$LOOPER_HOOKS_DIR/check-coverage.sh", "weight": 20 }
+  ]
+}
 ```
 
-Example:
+Each gate runs its `command` and passes if the command exits `0`. The loop stops early when the sum of passing weights equals the sum of all weights.
 
-- `72%` coverage becomes `18/20`
+`skip_if_missing` names a file or binary path. If that path does not exist, the gate is skipped and full points are awarded (gate not applicable to this project).
 
-Failure details:
+`$LOOPER_HOOKS_DIR` is exported by the Stop hook before running gates and resolves to the hooks directory, so gate commands can reference helper scripts shipped alongside the hooks.
 
-- the hook reports current line coverage and the `80%` target
-- it lists up to 5 files below the threshold when `coverage-summary.json` contains per-file entries
+### Default coverage gate
+
+`.claude/hooks/check-coverage.sh` reads `coverage/coverage-summary.json` (Jest/nyc format) and exits non-zero if line coverage is below 80%. Replace the command in the gate config with any tool that exits `0` when coverage is acceptable.
+
+### Scoring
+
+The total possible score is the sum of all gate weights. The loop treats a result equal to that total as complete. There is no partial credit: a gate either passes (full weight) or fails (zero).
 
 ## Circuit Breakers
 
@@ -270,7 +221,6 @@ The Stop hook reads `.stop_hook_active` from its input JSON.
 If this value is `true`:
 
 - state is updated to `breaker_tripped`
-- the hook prints `Stop hook breaker: allowing stop on re-entry.`
 - the hook exits `0`
 
 This prevents infinite re-entry if Claude is already being pushed back by the Stop hook on the same turn.
@@ -281,12 +231,12 @@ The budget is read from `max_iterations` in `.claude/looper.json` at startup. Th
 
 Enforcement points:
 
-- `PreToolUse` blocks future edits when the budget is exhausted and exits `2`
+- `PreToolUse` blocks further edits when the budget is exhausted and exits `2`
 - `Stop` exits `0` with a final budget summary when `iteration >= MAX_ITERATIONS`
 
 ### Perfect score
 
-If the total score reaches `100`, the Stop hook:
+If the total score reaches the sum of all gate weights, the Stop hook:
 
 - writes `status = "complete"`
 - prints a completion summary with score history
@@ -294,49 +244,26 @@ If the total score reaches `100`, the Stop hook:
 
 ## Feedback Channels
 
-The loop deliberately uses different output channels for different kinds of feedback.
+The loop uses different output channels for different kinds of feedback.
 
 ### `stdout`
 
-Used by:
-
-- `SessionStart`
-- `PostToolUse`
-
-Purpose:
-
-- context seeding
-- fast edit-local feedback
+Used by `SessionStart` and `PostToolUse` for context seeding and fast edit-local feedback.
 
 ### `stderr`
 
-Used by:
-
-- `PreToolUse` when blocking edits
-- `Stop` for pass summaries, failures, urgency coaching, and terminal summaries
-
-Purpose:
-
-- turn-ending feedback that should shape the next iteration
+Used by `PreToolUse` when blocking edits and by `Stop` for pass summaries, failures, urgency coaching, and terminal summaries.
 
 ### `additionalContext`
 
-Used by:
-
-- `PreToolUse`
-
-Purpose:
-
-- inject a lightweight pass/file reminder into Claude’s context without relying on error output
+Used by `PreToolUse` to inject a lightweight pass/file reminder into Claude's context without relying on error output.
 
 ## Exit Code Semantics
-
-The loop relies on Claude Code hook exit codes as control flow.
 
 - `0`: allow the session to stop or the tool action to proceed
 - `2`: continue the loop or block the current action with feedback
 
-Concrete usage in this project:
+Concrete usage:
 
 - `Stop` exits `0` for breaker, perfect completion, or budget exhaustion
 - `Stop` exits `2` after an imperfect pass so Claude gets another turn
@@ -345,44 +272,26 @@ Concrete usage in this project:
 
 ## Extension Points
 
-The current design is intentionally simple and shell-driven. The main customization seams are straightforward.
+### Change gate commands or weights
 
-### Add or change gates
+Edit `.claude/looper.json`. No hook scripts need to change. Replace commands with whatever your stack uses. Any command that exits `0` on success works.
 
-Edit [`.claude/hooks/stop-improve.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/stop-improve.sh) to:
+### Add a coverage helper
 
-- replace the default commands
-- add new gates such as build, security scan, or domain-specific validation
-- change gate weights or stop criteria
+`.claude/hooks/check-coverage.sh` is the default coverage gate. Replace its command in `looper.json` with any script or tool that exits non-zero when coverage is below your threshold. `$LOOPER_HOOKS_DIR` resolves to the hooks directory at runtime.
 
 ### Tighten or relax fast edit checks
 
-Edit [`.claude/hooks/post-edit-check.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/post-edit-check.sh) to:
+Edit `.claude/hooks/post-edit-check.sh` to support additional file types, disable auto-formatting, or add file-local validators.
 
-- support additional file types
-- disable auto-formatting
-- add file-local validators
+### Add fields to state
 
-### Change loop budget or state shape
-
-Edit [`.claude/hooks/state-utils.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/state-utils.sh) to:
-
-- raise or lower `MAX_ITERATIONS`
-- add new fields to `loop-state.json`
-- change terminal status values
+Edit `.claude/hooks/state-utils.sh` to add new fields to `loop-state.json` or change terminal status values.
 
 ### Adjust startup context
 
-Edit [`.claude/hooks/session-start.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/session-start.sh) to inject:
-
-- repo-specific constraints
-- architecture notes
-- project commands beyond `package.json` scripts
+Edit `.claude/hooks/session-start.sh` to inject repo-specific constraints, architecture notes, or project commands beyond `package.json` scripts.
 
 ### Rewire hook matchers
 
-Edit [`.claude/settings.json`](/Users/srdjans/Code/improvement-loop/.claude/settings.json) if you want:
-
-- different tool matchers
-- extra commands on the same hook event
-- a narrower or broader trigger surface
+Edit `.claude/settings.json` to change tool matchers, add commands on the same hook event, or narrow the trigger surface.
