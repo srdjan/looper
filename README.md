@@ -104,20 +104,20 @@ claude
 
 ## Configuration
 
-Edit `.claude/hooks/state-utils.sh`:
-```bash
-MAX_ITERATIONS=10  # change to any number
+Edit `.claude/looper.json`:
+```json
+{
+  "max_iterations": 10,
+  "gates": [
+    { "name": "typecheck", "command": "npx tsc --noEmit --pretty false", "weight": 30, "skip_if_missing": "tsconfig.json" },
+    { "name": "lint",      "command": "npx eslint . --ext .ts,.tsx",     "weight": 20, "skip_if_missing": "node_modules/.bin/eslint" },
+    { "name": "test",      "command": "npm test",                        "weight": 30 },
+    { "name": "coverage",  "command": "$LOOPER_HOOKS_DIR/check-coverage.sh", "weight": 20 }
+  ]
+}
 ```
 
-Edit `.claude/hooks/stop-improve.sh` to adjust gate weights:
-```
-typecheck = 30 points
-lint      = 20 points
-test      = 30 points
-coverage  = 20 points
-─────────────────────
-total     = 100
-```
+Replace the gate commands with whatever your stack uses. Any command that exits `0` on success works.
 
 ## Circuit Breakers
 

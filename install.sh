@@ -35,9 +35,19 @@ echo ""
 
 # ── Preflight checks ───────────────────────────────────────-
 if ! command -v jq &>/dev/null; then
-  echo "⚠  jq is required but not found."
-  echo "   Install: brew install jq / apt install jq / choco install jq"
-  exit 1
+  echo "  jq is required but not found."
+  if command -v brew &>/dev/null; then
+    echo "  Running: brew install jq"
+    brew install jq
+  elif command -v apt-get &>/dev/null; then
+    echo "  Running: sudo apt-get install -y jq"
+    sudo apt-get install -y jq
+  else
+    echo "  Install manually: brew install jq / apt install jq / choco install jq"
+    echo "  Then re-run this script."
+    exit 1
+  fi
+  echo "  jq installed."
 fi
 
 if [ ! -d "$HOOKS_SRC" ]; then
@@ -165,14 +175,12 @@ if [ "$ERRORS" -eq 0 ]; then
   echo "║                                              ║"
   echo "║   The improvement loop activates on new      ║"
   echo "║   sessions automatically. Give Claude a      ║"
-  echo "║   task and watch it iterate up to 10 passes. ║"
+  echo "║   task and watch it iterate until all gates  ║"
+  echo "║   pass or the budget is reached.             ║"
   echo "║                                              ║"
-  echo "║   Configuration:                             ║"
-  echo "║     Max iterations: edit MAX_ITERATIONS in   ║"
-  echo "║     .claude/hooks/state-utils.sh             ║"
-  echo "║                                              ║"
-  echo "║     Gate weights: edit stop-improve.sh       ║"
-  echo "║     (typecheck=30, lint=20, test=30, cov=20) ║"
+  echo "║   Configuration (.claude/looper.json):       ║"
+  echo "║     max_iterations  — loop budget            ║"
+  echo "║     gates           — commands and weights   ║"
   echo "║                                              ║"
   echo "╚══════════════════════════════════════════════╝"
 else

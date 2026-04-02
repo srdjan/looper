@@ -183,7 +183,7 @@ Implementation note:
 
 - `checks.typecheck`, `checks.lint`, and `checks.test` are updated by `stop-improve.sh`
 - `checks.coverage` is initialized in state but is not currently written back after evaluation
-- `max_iterations` is written as a literal `10` during initialization, while runtime budget checks use `MAX_ITERATIONS` from the shell script
+- `max_iterations` is written from the value read out of `.claude/looper.json` at startup; both initialization and runtime budget checks use the same `MAX_ITERATIONS` shell variable
 
 ## Quality Gates And Scoring
 
@@ -277,7 +277,7 @@ This prevents infinite re-entry if Claude is already being pushed back by the St
 
 ### Iteration budget
 
-The hard budget is defined by `MAX_ITERATIONS=10` in [`.claude/hooks/state-utils.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/state-utils.sh).
+The budget is read from `max_iterations` in `.claude/looper.json` at startup. The hooks fall back to `10` if the field is absent.
 
 Enforcement points:
 

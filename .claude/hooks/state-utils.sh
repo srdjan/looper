@@ -5,7 +5,8 @@
 
 STATE_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/state"
 STATE_FILE="$STATE_DIR/loop-state.json"
-MAX_ITERATIONS=10
+LOOPER_CONFIG="${CLAUDE_PROJECT_DIR:-.}/.claude/looper.json"
+MAX_ITERATIONS=$(jq -r '.max_iterations // 10' "$LOOPER_CONFIG" 2>/dev/null || echo 10)
 
 # ── Ensure state directory exists ───────────────────────────
 ensure_state_dir() {
@@ -84,9 +85,8 @@ is_budget_exhausted() {
 # Looks for .claude/looper.json in the project dir, then falls
 # back to the looper.json bundled alongside the hook scripts.
 load_gates_config() {
-  local project_config="${CLAUDE_PROJECT_DIR:-.}/.claude/looper.json"
-  if [ -f "$project_config" ]; then
-    jq '.gates' "$project_config"
+  if [ -f "$LOOPER_CONFIG" ]; then
+    jq '.gates' "$LOOPER_CONFIG"
     return
   fi
 

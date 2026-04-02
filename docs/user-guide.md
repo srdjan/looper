@@ -224,49 +224,79 @@ This means the human-facing pass count is effectively one-based during Stop outp
 
 ## Configuration Options
 
-There is no dedicated config file yet. The current customization points are shell constants and commands in the installed hook scripts.
+All configuration lives in `.claude/looper.json`. Edit that file to change any loop behavior - no hook scripts need to be modified.
 
 ### Max iterations
 
-Edit the installed copy of [`.claude/hooks/state-utils.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/state-utils.sh):
+Set `max_iterations` in `.claude/looper.json`:
 
-```bash
-MAX_ITERATIONS=10
+```json
+{
+  "max_iterations": 10,
+  "gates": [ ... ]
+}
 ```
 
-Related implementation detail:
+The hooks read this value at startup. Changing it here is the only edit required.
 
-- `init_state` also writes `"max_iterations": 10` as a JSON literal
-- `session-start.sh` prints `max 10 passes` and `Budget: 10 passes total` as fixed text
+### Gate weights and commands
 
-If you change the budget, update those hard-coded `10` values too so the state file and Claude’s startup context stay consistent.
+Gates are defined in `.claude/looper.json`. Each gate has a name, command, weight, and optional `skip_if_missing` path:
 
-### Gate weights
-
-Edit the scoring logic in the installed copy of [`.claude/hooks/stop-improve.sh`](/Users/srdjans/Code/improvement-loop/.claude/hooks/stop-improve.sh):
-
-- typecheck: `30`
-- lint: `20`
-- test: `30`
-- coverage: `20`
+```json
+{
+  "max_iterations": 10,
+  "gates": [
+    { "name": "typecheck", "command": "npx tsc --noEmit --pretty false", "weight": 30, "skip_if_missing": "tsconfig.json" },
+    { "name": "lint",      "command": "npx eslint . --ext .ts,.tsx",     "weight": 20, "skip_if_missing": "node_modules/.bin/eslint" },
+    { "name": "test",      "command": "npm test",                        "weight": 30 },
+    { "name": "coverage",  "command": "$LOOPER_HOOKS_DIR/check-coverage.sh", "weight": 20 }
+  ]
+}
+```
 
 The loop only stops early when the total score reaches `100`.
 
+### Non-TypeScript projects
+
+The default gates assume a Node.js/TypeScript stack. Replace them with whatever your project uses. The hooks only care that the gate command exits `0` on success and non-zero on failure.
+
+Python example:
+
+```json
+{
+  "max_iterations": 10,
+  "gates": [
+    { "name": "typecheck", "command": "mypy src/",    "weight": 30, "skip_if_missing": "mypy.ini" },
+    { "name": "lint",      "command": "ruff check .", "weight": 20, "skip_if_missing": "ruff.toml" },
+    { "name": "test",      "command": "pytest -q",    "weight": 50 }
+  ]
+}
+```
+
+Go example:
+
+```json
+{
+  "max_iterations": 10,
+  "gates": [
+    { "name": "build", "command": "go build ./...", "weight": 30 },
+    { "name": "vet",   "command": "go vet ./...",   "weight": 20 },
+    { "name": "test",  "command": "go test ./...",  "weight": 50 }
+  ]
+}
+```
+
+Any command that can be run from the project root works. Gate weights can be any positive integers — the loop stops early when the sum of passing weights equals the sum of all weights.
+
 ### Quality thresholds
 
-Current hard-coded thresholds and commands:
+Default TypeScript gate behavior:
 
-- typecheck: `npx tsc --noEmit --pretty false`
-- lint: `npx eslint . --ext .ts,.tsx --format compact`
-- test: `npm test -- --reporter=dot`
-- coverage target: `80%` line coverage from `coverage/coverage-summary.json`
-
-Practical implications:
-
-- no `tsconfig.json` means typecheck is skipped and full typecheck points are awarded
-- missing `eslint` means lint is skipped and full lint points are awarded
-- missing `package.json` test script means tests are skipped with `0/30` and a failure message asking for tests
-- missing coverage summary means coverage gets `0/20`
+- typecheck: skipped if `tsconfig.json` is absent (full points awarded)
+- lint: skipped if `node_modules/.bin/eslint` is absent (full points awarded)
+- test: fails with `0/30` if no `test` script in `package.json`
+- coverage: partial credit proportional to line coverage against an 80% target, read from `coverage/coverage-summary.json`
 
 ## Troubleshooting
 
@@ -274,14 +304,14 @@ Practical implications:
 
 Symptoms:
 
-- `Budget exhausted: 10 iterations reached. No further edits allowed.`
+- `Budget exhausted: N iterations reached. No further edits allowed.`
 - final Stop output says `IMPROVEMENT LOOP COMPLETE — BUDGET REACHED`
 
 What to do:
 
 - inspect `.claude/state/loop-state.json` for score history and touched files
 - tighten the task scope and start a fresh session
-- increase `MAX_ITERATIONS` if the project genuinely needs a larger budget
+- increase `max_iterations` in `.claude/looper.json` if the project genuinely needs a larger budget
 
 ### Failing gates
 
