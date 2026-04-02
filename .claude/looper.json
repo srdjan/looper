@@ -1,0 +1,26 @@
+{
+  "gates": [
+    {
+      "name": "typecheck",
+      "command": "npx tsc --noEmit --pretty false",
+      "weight": 30,
+      "skip_if_missing": "tsconfig.json"
+    },
+    {
+      "name": "lint",
+      "command": "npx eslint . --ext .ts,.tsx",
+      "weight": 20,
+      "skip_if_missing": "node_modules/.bin/eslint"
+    },
+    {
+      "name": "test",
+      "command": "npm test",
+      "weight": 30
+    },
+    {
+      "name": "coverage",
+      "command": "$LOOPER_HOOKS_DIR/check-coverage.sh",
+      "weight": 20
+    }
+  ]
+}

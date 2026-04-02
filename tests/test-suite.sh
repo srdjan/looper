@@ -298,7 +298,7 @@ TEST_FAIL_STDERR=$(mktemp)
 run_stop_hook "$FIXTURE_TEST_FAIL" '{"stop_hook_active":false}' "$TEST_FAIL_STDOUT" "$TEST_FAIL_STDERR"
 assert_eq "stop hook failing tests exit 2" "2" "$?"
 assert_eq "stop hook failing tests increments iteration" "1" "$(jq -r '.iteration' "$FIXTURE_TEST_FAIL/.claude/state/loop-state.json")"
-assert_contains "stop hook failing tests reports failure block" "Test Failures" "$(cat "$TEST_FAIL_STDERR")"
+assert_contains "stop hook failing tests reports failure block" "── test ──" "$(cat "$TEST_FAIL_STDERR")"
 rm -rf "$FIXTURE_TEST_FAIL" "$TEST_FAIL_STDOUT" "$TEST_FAIL_STDERR"
 
 FIXTURE_PARTIAL_COVERAGE=$(make_fixture)
@@ -328,7 +328,7 @@ PARTIAL_STDOUT=$(mktemp)
 PARTIAL_STDERR=$(mktemp)
 run_stop_hook "$FIXTURE_PARTIAL_COVERAGE" '{"stop_hook_active":false}' "$PARTIAL_STDOUT" "$PARTIAL_STDERR"
 assert_eq "stop hook partial coverage exit 2" "2" "$?"
-assert_eq "stop hook partial coverage score" "90" "$(jq -r '.scores[0]' "$FIXTURE_PARTIAL_COVERAGE/.claude/state/loop-state.json")"
+assert_eq "stop hook partial coverage score" "80" "$(jq -r '.scores[0]' "$FIXTURE_PARTIAL_COVERAGE/.claude/state/loop-state.json")"
 assert_contains "stop hook partial coverage reports uncovered files" "src/example.ts: 40%" "$(cat "$PARTIAL_STDERR")"
 rm -rf "$FIXTURE_PARTIAL_COVERAGE" "$PARTIAL_STDOUT" "$PARTIAL_STDERR"
 

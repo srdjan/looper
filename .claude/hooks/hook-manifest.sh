@@ -8,4 +8,5 @@ HOOK_FILES=(
   pre-edit-guard.sh
   post-edit-check.sh
   stop-improve.sh
+  check-coverage.sh
 )

@@ -12,25 +12,29 @@ source "$SCRIPT_DIR/state-utils.sh"
 # ── Initialize fresh loop state ─────────────────────────────
 init_state
 
+# ── Load gate config ─────────────────────────────────────────
+GATES=$(load_gates_config)
+TOTAL=$(echo "$GATES" | jq '[.[].weight] | add')
+
+# ── Build gate list for context injection ────────────────────
+GATE_LIST=$(echo "$GATES" | jq -r '.[] | "  - \(.name)  (\(.weight)pts) — \(.command)"')
+
 # ── Everything below is injected into Claude's context ──────
-cat <<'CONTEXT' | sed "s/__MAX_ITERATIONS__/$MAX_ITERATIONS/g"
+cat <<CONTEXT | sed "s/__MAX_ITERATIONS__/$MAX_ITERATIONS/g"
 ## Improvement Loop Active
 
 You are operating inside an improvement loop (max __MAX_ITERATIONS__ passes).
-After each response, a Stop hook evaluates your work against
-four quality gates:
+After each response, a Stop hook runs the following quality gates and scores
+your work out of $TOTAL points:
 
-  1. typecheck  — `npx tsc --noEmit` must exit 0
-  2. lint       — `npx eslint . --ext .ts` must exit 0
-  3. test       — `npm test` must exit 0
-  4. coverage   — line coverage must be ≥ 80%
+$GATE_LIST
 
-If any gate fails, you'll receive the failures as feedback
-and get another turn. Focus on fixing the specific failures
+Each gate passes if its command exits 0. If any gate fails, you'll receive
+the failures as feedback and get another turn. Fix the specific failures
 reported — don't rewrite unrelated code.
 
-Each pass is numbered. You can see your current pass in the
-PreToolUse context injection. Budget: __MAX_ITERATIONS__ passes total.
+Each pass is numbered. You can see your current pass in the PreToolUse
+context injection. Budget: __MAX_ITERATIONS__ passes total.
 CONTEXT
 
 # ── Dynamic project context ─────────────────────────────────

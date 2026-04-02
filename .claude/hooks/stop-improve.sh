@@ -4,15 +4,21 @@
 #
 # This is where the loop lives. When Claude finishes responding:
 #   1. Check circuit breakers (stop_hook_active, budget)
-#   2. Run four quality gates: typecheck, lint, test, coverage
-#   3. Score the run (0-100)
-#   4. If perfect: exit 0 → Claude stops
-#   5. If imperfect: record score, write targeted feedback,
+#   2. Load gate config from .claude/looper.json
+#   3. Run each gate: pass if exit 0, fail otherwise
+#   4. Score the run (sum of passing gate weights)
+#   5. If perfect: exit 0 → Claude stops
+#   6. If imperfect: record score, write targeted feedback,
 #      increment iteration, exit 2 → Claude gets another turn
 #
 # Exit codes:
 #   0 = let Claude stop (all gates pass, budget hit, or breaker)
 #   2 = push Claude back into agentic loop with feedback
+#
+# Gate config: .claude/looper.json
+# Each gate: { "name": "...", "command": "...", "weight": N, "skip_if_missing": "..." }
+# A gate passes if its command exits 0. skip_if_missing awards full points
+# when the specified file/binary is absent (gate not applicable).
 
 set -euo pipefail
 
@@ -22,28 +28,13 @@ source "$SCRIPT_DIR/state-utils.sh"
 INPUT=$(cat)
 
 append_gate_result() {
-  local symbol="$1"
-  local name="$2"
-  local detail="$3"
-  local awarded="$4"
-  local available="$5"
+  local symbol="$1" name="$2" detail="$3" awarded="$4" available="$5"
   GATE_RESULTS="${GATE_RESULTS}  ${symbol} ${name}: ${detail} (${awarded}/${available})\n"
 }
 
 append_failure_block() {
-  local heading="$1"
-  local body="$2"
+  local heading="$1" body="$2"
   FAILURES="${FAILURES}\n── ${heading} ──\n${body}\n"
-}
-
-coverage_meets_target() {
-  local line_cov="$1"
-  awk -v line_cov="$line_cov" 'BEGIN { exit !(line_cov >= 80) }'
-}
-
-coverage_partial_score() {
-  local line_cov="$1"
-  awk -v line_cov="$line_cov" 'BEGIN { printf "%d", int((line_cov * 20) / 80) }'
 }
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -68,7 +59,6 @@ CURRENT_PASS=$((ITERATION + 1))
 if [ "$ITERATION" -ge "$MAX_ITERATIONS" ]; then
   write_state '.status' '"budget_exhausted"'
 
-  # Final summary
   SCORES=$(read_state '.scores')
   echo "" >&2
   echo "══════════════════════════════════════════════" >&2
@@ -82,115 +72,53 @@ if [ "$ITERATION" -ge "$MAX_ITERATIONS" ]; then
 fi
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# QUALITY GATES
-# Each gate: run check → capture pass/fail → accumulate score
-# Score weights: typecheck=30, lint=20, test=30, coverage=20
+# LOAD GATE CONFIG
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Export LOOPER_HOOKS_DIR so gate commands in looper.json can
+# reference helper scripts via $LOOPER_HOOKS_DIR/script.sh
+export LOOPER_HOOKS_DIR="$SCRIPT_DIR"
 
+GATES=$(load_gates_config)
+TOTAL=$(echo "$GATES" | jq '[.[].weight] | add')
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# QUALITY GATES
+# Each gate: run command → pass if exit 0 → accumulate weight
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SCORE=0
-TOTAL=100
 FAILURES=""
 GATE_RESULTS=""
+CHECKS_PAIRS=""  # accumulates "name":true/false pairs for state
 
-# ── Gate 1: TypeScript compilation (30 points) ──────────────
-echo "⏳ [Pass $CURRENT_PASS/$MAX_ITERATIONS] Running typecheck..." >&2
-if [ -f tsconfig.json ]; then
-  TC_OUT=$(npx tsc --noEmit --pretty false 2>&1 || true)
-  TC_ERRORS=$(echo "$TC_OUT" | grep -c 'error TS' || echo "0")
-  if [ "$TC_ERRORS" -eq 0 ]; then
-    SCORE=$((SCORE + 30))
-    append_gate_result "✓" "typecheck" "pass" "30" "30"
-  else
-    append_gate_result "✗" "typecheck" "$TC_ERRORS errors" "0" "30"
-    append_failure_block "TypeCheck Failures" "$(echo "$TC_OUT" | grep 'error TS' | head -10)"
-  fi
-else
-  # No tsconfig — skip, award points
-  SCORE=$((SCORE + 30))
-  append_gate_result "○" "typecheck" "skipped — no tsconfig.json" "30" "30"
-fi
+while IFS=$'\t' read -r name cmd weight skip_if; do
+  echo "⏳ [Pass $CURRENT_PASS/$MAX_ITERATIONS] Running $name..." >&2
 
-# ── Gate 2: Lint (20 points) ────────────────────────────────
-echo "⏳ [Pass $CURRENT_PASS/$MAX_ITERATIONS] Running lint..." >&2
-if [ -f node_modules/.bin/eslint ]; then
-  LINT_OUT=$(npx eslint . --ext .ts,.tsx --format compact 2>&1 || true)
-  LINT_ERRORS=$(echo "$LINT_OUT" | grep -c ': Error -' || echo "0")
-  if [ "$LINT_ERRORS" -eq 0 ]; then
-    SCORE=$((SCORE + 20))
-    append_gate_result "✓" "lint" "pass" "20" "20"
-  else
-    append_gate_result "✗" "lint" "$LINT_ERRORS errors" "0" "20"
-    append_failure_block "Lint Failures" "$(echo "$LINT_OUT" | grep ': Error -' | head -10)"
-  fi
-else
-  SCORE=$((SCORE + 20))
-  append_gate_result "○" "lint" "skipped — eslint not installed" "20" "20"
-fi
-
-# ── Gate 3: Tests (30 points) ───────────────────────────────
-echo "⏳ [Pass $CURRENT_PASS/$MAX_ITERATIONS] Running tests..." >&2
-if jq -e '.scripts.test' package.json &>/dev/null 2>&1; then
-  if TEST_OUT=$(npm test -- --reporter=dot 2>&1); then
-    TEST_EXIT=0
-  else
-    TEST_EXIT=$?
+  # skip_if_missing: gate not applicable to this project — award full points
+  if [ -n "$skip_if" ] && [ ! -e "$skip_if" ]; then
+    SCORE=$((SCORE + weight))
+    append_gate_result "○" "$name" "skipped — $skip_if not found" "$weight" "$weight"
+    CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":true"
+    continue
   fi
 
-  # Try to extract pass/fail counts from common test runners
-  TESTS_FAILED=$(printf '%s\n' "$TEST_OUT" | grep -E -c '(FAIL|✗|✘|×|failed)' || true)
-
-  if [ "$TEST_EXIT" -eq 0 ] && [ "$TESTS_FAILED" -eq 0 ]; then
-    SCORE=$((SCORE + 30))
-    append_gate_result "✓" "test" "pass" "30" "30"
+  if gate_out=$(eval "$cmd" 2>&1); then
+    SCORE=$((SCORE + weight))
+    append_gate_result "✓" "$name" "pass" "$weight" "$weight"
+    CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":true"
   else
-    append_gate_result "✗" "test" "failures detected" "0" "30"
-    append_failure_block "Test Failures" "$(echo "$TEST_OUT" | tail -20)"
+    append_gate_result "✗" "$name" "failed" "0" "$weight"
+    append_failure_block "$name" "$(echo "$gate_out" | tail -20)"
+    CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":false"
   fi
-else
-  append_gate_result "○" "test" "skipped — no test script" "0" "30"
-  append_failure_block "Missing Tests" "No test script found in package.json. Add tests."
-fi
-
-# ── Gate 4: Coverage (20 points) ────────────────────────────
-echo "⏳ [Pass $CURRENT_PASS/$MAX_ITERATIONS] Checking coverage..." >&2
-COVERAGE_FILE="coverage/coverage-summary.json"
-if [ -f "$COVERAGE_FILE" ]; then
-  LINE_COV=$(jq -r '.total.lines.pct // 0' "$COVERAGE_FILE" 2>/dev/null || echo "0")
-  # Scale: 80%+ = full marks, below = proportional
-  if coverage_meets_target "$LINE_COV"; then
-    SCORE=$((SCORE + 20))
-    append_gate_result "✓" "coverage" "${LINE_COV}%" "20" "20"
-  else
-    # Proportional score: (coverage/80) * 20
-    PARTIAL=$(coverage_partial_score "$LINE_COV")
-    SCORE=$((SCORE + PARTIAL))
-    append_gate_result "△" "coverage" "${LINE_COV}% — need 80%+" "$PARTIAL" "20"
-    COVERAGE_FAILURE="Line coverage: ${LINE_COV}%. Target: 80%.\n"
-    # Show uncovered files
-    if command -v jq &>/dev/null; then
-      UNCOVERED=$(jq -r 'to_entries[]
-        | select(.key != "total")
-        | select(.value.lines.pct < 80)
-        | "\(.key): \(.value.lines.pct)%"' "$COVERAGE_FILE" 2>/dev/null | head -5 || true)
-      if [ -n "$UNCOVERED" ]; then
-        COVERAGE_FAILURE="${COVERAGE_FAILURE}Uncovered files:\n$UNCOVERED"
-      fi
-    fi
-    append_failure_block "Coverage Gap" "$COVERAGE_FAILURE"
-  fi
-else
-  append_gate_result "○" "coverage" "no coverage data — run tests with --coverage" "0" "20"
-fi
+done < <(echo "$GATES" | jq -r '.[] | [.name, .command, (.weight | tostring), (.skip_if_missing // "")] | @tsv')
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # SCORE & DECIDE
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# Record score
+# Record scores and per-gate results
 append_state '.scores' "$SCORE"
-write_state ".checks.typecheck" "$(echo "$GATE_RESULTS" | grep -q '✓ typecheck' && echo true || echo false)"
-write_state ".checks.lint" "$(echo "$GATE_RESULTS" | grep -q '✓ lint' && echo true || echo false)"
-write_state ".checks.test" "$(echo "$GATE_RESULTS" | grep -q '✓ test' && echo true || echo false)"
+write_state '.checks' "{${CHECKS_PAIRS}}"
 
 # ── Perfect score: done! ────────────────────────────────────
 if [ "$SCORE" -eq "$TOTAL" ]; then

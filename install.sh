@@ -21,6 +21,7 @@ TARGET=$(cd "$TARGET" && pwd)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOKS_SRC="$SCRIPT_DIR/.claude/hooks"
 SETTINGS_SRC="$SCRIPT_DIR/.claude/settings.json"
+LOOPER_CONFIG_SRC="$SCRIPT_DIR/.claude/looper.json"
 # shellcheck source=/dev/null
 source "$HOOKS_SRC/hook-manifest.sh"
 
@@ -49,6 +50,16 @@ fi
 echo "  Creating .claude/hooks/ and .claude/state/..."
 mkdir -p "$TARGET/.claude/hooks"
 mkdir -p "$TARGET/.claude/state"
+
+# ── Copy looper.json (only if not already present) ─────────
+echo "  Copying gate config..."
+LOOPER_CONFIG_DEST="$TARGET/.claude/looper.json"
+if [ ! -f "$LOOPER_CONFIG_DEST" ]; then
+  cp "$LOOPER_CONFIG_SRC" "$LOOPER_CONFIG_DEST"
+  echo "    ✓ looper.json (customize gates for your stack)"
+else
+  echo "    ○ looper.json already exists — not overwritten"
+fi
 
 # ── Copy hook scripts ──────────────────────────────────────-
 echo "  Copying hook scripts..."
