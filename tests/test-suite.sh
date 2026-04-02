@@ -319,6 +319,18 @@ cat > "$FIXTURE_PARTIAL_COVERAGE/coverage/coverage-summary.json" <<'EOF'
   }
 }
 EOF
+mkdir -p "$FIXTURE_PARTIAL_COVERAGE/.claude"
+cat > "$FIXTURE_PARTIAL_COVERAGE/.claude/looper.json" <<EOF
+{
+  "max_iterations": 10,
+  "gates": [
+    { "name": "typecheck", "command": "npx tsc --noEmit --pretty false", "weight": 30, "skip_if_missing": "tsconfig.json" },
+    { "name": "lint", "command": "npx eslint . --ext .ts,.tsx", "weight": 20, "skip_if_missing": "node_modules/.bin/eslint" },
+    { "name": "test", "command": "npm test", "weight": 30 },
+    { "name": "coverage", "command": "$PROJECT_DIR/.claude/hooks/check-coverage.sh", "weight": 20 }
+  ]
+}
+EOF
 bash -c "
   export CLAUDE_PROJECT_DIR='$FIXTURE_PARTIAL_COVERAGE'
   source '$PROJECT_DIR/.claude/hooks/state-utils.sh'
@@ -331,6 +343,268 @@ assert_eq "stop hook partial coverage exit 2" "2" "$?"
 assert_eq "stop hook partial coverage score" "80" "$(jq -r '.scores[0]' "$FIXTURE_PARTIAL_COVERAGE/.claude/state/loop-state.json")"
 assert_contains "stop hook partial coverage reports uncovered files" "src/example.ts: 40%" "$(cat "$PARTIAL_STDERR")"
 rm -rf "$FIXTURE_PARTIAL_COVERAGE" "$PARTIAL_STDOUT" "$PARTIAL_STDERR"
+
+# ── Phase 1: Gate groups (required/optional) ─────────────────
+
+echo ""
+echo "── gate groups (required/optional) ───────"
+
+# Test: optional gate failure does not block completion
+FIXTURE_OPTIONAL=$(make_fixture)
+cat > "$FIXTURE_OPTIONAL/package.json" <<'EOF'
+{ "scripts": { "test": "node -e \"process.exit(0)\" --" } }
+EOF
+cat > "$FIXTURE_OPTIONAL/coverage/coverage-summary.json" <<'EOF'
+{ "total": { "lines": { "pct": 40 } }, "src/example.ts": { "lines": { "pct": 40 } } }
+EOF
+mkdir -p "$FIXTURE_OPTIONAL/.claude"
+cat > "$FIXTURE_OPTIONAL/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "gates": [
+    { "name": "test", "command": "npm test", "weight": 50, "required": true },
+    { "name": "coverage", "command": "node -e \"process.exit(1)\"", "weight": 50, "required": false }
+  ]
+}
+EOF
+bash -c "
+  export CLAUDE_PROJECT_DIR='$FIXTURE_OPTIONAL'
+  source '$PROJECT_DIR/.claude/hooks/state-utils.sh'
+  init_state
+"
+OPT_STDOUT=$(mktemp)
+OPT_STDERR=$(mktemp)
+run_stop_hook "$FIXTURE_OPTIONAL" '{"stop_hook_active":false}' "$OPT_STDOUT" "$OPT_STDERR"
+assert_eq "optional gate failure allows completion (exit 0)" "0" "$?"
+assert_eq "optional gate: status is complete" "complete" "$(jq -r '.status' "$FIXTURE_OPTIONAL/.claude/state/loop-state.json")"
+assert_contains "optional gate: reports optional failures" "Optional gate failures" "$(cat "$OPT_STDERR")"
+assert_contains "optional gate: reports REQUIRED GATES PASS" "REQUIRED GATES PASS" "$(cat "$OPT_STDERR")"
+rm -rf "$FIXTURE_OPTIONAL" "$OPT_STDOUT" "$OPT_STDERR"
+
+# Test: required gate failure forces continuation
+FIXTURE_REQUIRED=$(make_fixture)
+cat > "$FIXTURE_REQUIRED/package.json" <<'EOF'
+{ "scripts": { "test": "node -e \"process.exit(1)\" --" } }
+EOF
+mkdir -p "$FIXTURE_REQUIRED/.claude"
+cat > "$FIXTURE_REQUIRED/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "gates": [
+    { "name": "test", "command": "npm test", "weight": 50, "required": true },
+    { "name": "trivial", "command": "true", "weight": 50 }
+  ]
+}
+EOF
+bash -c "
+  export CLAUDE_PROJECT_DIR='$FIXTURE_REQUIRED'
+  source '$PROJECT_DIR/.claude/hooks/state-utils.sh'
+  init_state
+"
+REQ_STDOUT=$(mktemp)
+REQ_STDERR=$(mktemp)
+run_stop_hook "$FIXTURE_REQUIRED" '{"stop_hook_active":false}' "$REQ_STDOUT" "$REQ_STDERR"
+assert_eq "required gate failure forces continuation (exit 2)" "2" "$?"
+assert_eq "required gate failure increments iteration" "1" "$(jq -r '.iteration' "$FIXTURE_REQUIRED/.claude/state/loop-state.json")"
+rm -rf "$FIXTURE_REQUIRED" "$REQ_STDOUT" "$REQ_STDERR"
+
+# ── Phase 1: enabled flag ────────────────────────────────────
+
+echo ""
+echo "── enabled flag ────────────────────────────"
+
+FIXTURE_DISABLED=$(make_fixture)
+mkdir -p "$FIXTURE_DISABLED/.claude"
+cat > "$FIXTURE_DISABLED/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "gates": [
+    { "name": "pass", "command": "true", "weight": 50 },
+    { "name": "disabled-fail", "command": "false", "weight": 50, "enabled": false }
+  ]
+}
+EOF
+bash -c "
+  export CLAUDE_PROJECT_DIR='$FIXTURE_DISABLED'
+  source '$PROJECT_DIR/.claude/hooks/state-utils.sh'
+  init_state
+"
+DIS_STDOUT=$(mktemp)
+DIS_STDERR=$(mktemp)
+run_stop_hook "$FIXTURE_DISABLED" '{"stop_hook_active":false}' "$DIS_STDOUT" "$DIS_STDERR"
+assert_eq "disabled gate is excluded (exit 0)" "0" "$?"
+assert_eq "disabled gate: score is 50 (only enabled gate)" "50" "$(jq -r '.scores[0]' "$FIXTURE_DISABLED/.claude/state/loop-state.json")"
+rm -rf "$FIXTURE_DISABLED" "$DIS_STDOUT" "$DIS_STDERR"
+
+# ── Phase 1: run_when ────────────────────────────────────────
+
+echo ""
+echo "── run_when conditional execution ──────────"
+
+FIXTURE_RUNWHEN=$(make_fixture)
+mkdir -p "$FIXTURE_RUNWHEN/.claude"
+cat > "$FIXTURE_RUNWHEN/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "gates": [
+    { "name": "always", "command": "true", "weight": 50 },
+    { "name": "ts-only", "command": "false", "weight": 50, "run_when": ["src/**/*.ts"] }
+  ]
+}
+EOF
+bash -c "
+  export CLAUDE_PROJECT_DIR='$FIXTURE_RUNWHEN'
+  source '$PROJECT_DIR/.claude/hooks/state-utils.sh'
+  init_state
+  append_state '.files_touched' '\"README.md\"'
+"
+RW_STDOUT=$(mktemp)
+RW_STDERR=$(mktemp)
+run_stop_hook "$FIXTURE_RUNWHEN" '{"stop_hook_active":false}' "$RW_STDOUT" "$RW_STDERR"
+assert_eq "run_when skips gate when no files match (exit 0)" "0" "$?"
+assert_contains "run_when reports skip reason" "no matching files changed" "$(cat "$RW_STDERR")"
+
+# Now test with a matching file
+bash -c "
+  export CLAUDE_PROJECT_DIR='$FIXTURE_RUNWHEN'
+  source '$PROJECT_DIR/.claude/hooks/state-utils.sh'
+  init_state
+  append_state '.files_touched' '\"src/app/index.ts\"'
+"
+run_stop_hook "$FIXTURE_RUNWHEN" '{"stop_hook_active":false}' "$RW_STDOUT" "$RW_STDERR"
+assert_eq "run_when runs gate when files match (exit 2)" "2" "$?"
+rm -rf "$FIXTURE_RUNWHEN" "$RW_STDOUT" "$RW_STDERR"
+
+# ── Phase 2: configurable post-edit checks ───────────────────
+
+echo ""
+echo "── configurable post-edit checks ──────────"
+
+run_post_edit_hook() {
+  local fixture_dir="$1"
+  local file_path="$2"
+  local stdout_file="$3"
+  local stderr_file="$4"
+  local input_json="{\"tool_input\":{\"file_path\":\"$file_path\"}}"
+  (
+    export CLAUDE_PROJECT_DIR="$fixture_dir"
+    cd "$fixture_dir" || exit 1
+    printf '%s' "$input_json" | bash "$PROJECT_DIR/.claude/hooks/post-edit-check.sh" >"$stdout_file" 2>"$stderr_file"
+  )
+}
+
+FIXTURE_CHECKS=$(make_fixture)
+mkdir -p "$FIXTURE_CHECKS/.claude"
+# Create a check that always passes for .md files
+cat > "$FIXTURE_CHECKS/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "gates": [],
+  "checks": [
+    { "name": "md-check", "command": "true", "pattern": "*.md" },
+    { "name": "ts-check", "command": "false", "pattern": "*.ts" }
+  ]
+}
+EOF
+bash -c "
+  export CLAUDE_PROJECT_DIR='$FIXTURE_CHECKS'
+  source '$PROJECT_DIR/.claude/hooks/state-utils.sh'
+  init_state
+"
+CHK_STDOUT=$(mktemp)
+CHK_STDERR=$(mktemp)
+
+# Test: .md file should run md-check (passes) and skip ts-check
+run_post_edit_hook "$FIXTURE_CHECKS" "README.md" "$CHK_STDOUT" "$CHK_STDERR"
+assert_eq "post-edit check exits 0 for matching passing check" "0" "$?"
+assert_contains "post-edit check reports clean for .md" "all checks clean" "$(cat "$CHK_STDOUT")"
+
+# Test: .ts file should run ts-check (fails) and skip md-check
+run_post_edit_hook "$FIXTURE_CHECKS" "src/app.ts" "$CHK_STDOUT" "$CHK_STDERR"
+assert_eq "post-edit check exits 0 (always exits 0)" "0" "$?"
+assert_contains "post-edit check reports issues for .ts" "ts-check" "$(cat "$CHK_STDOUT")"
+
+# Test: .py file should match no checks
+run_post_edit_hook "$FIXTURE_CHECKS" "main.py" "$CHK_STDOUT" "$CHK_STDERR"
+assert_eq "post-edit check exits 0 for unmatched file" "0" "$?"
+assert_contains "post-edit check reports clean for unmatched" "all checks clean" "$(cat "$CHK_STDOUT")"
+
+rm -rf "$FIXTURE_CHECKS" "$CHK_STDOUT" "$CHK_STDERR"
+
+# ── Phase 3: configurable context ────────────────────────────
+
+echo ""
+echo "── configurable context injection ──────────"
+
+FIXTURE_CTX=$(make_fixture)
+mkdir -p "$FIXTURE_CTX/.claude"
+cat > "$FIXTURE_CTX/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 5,
+  "gates": [
+    { "name": "pass", "command": "true", "weight": 100 }
+  ],
+  "context": [
+    "This project uses {max_iterations} max iterations.",
+    "Custom rule: never modify the API contract."
+  ]
+}
+EOF
+bash -c "
+  export CLAUDE_PROJECT_DIR='$FIXTURE_CTX'
+  source '$PROJECT_DIR/.claude/hooks/state-utils.sh'
+  init_state
+"
+CTX_STDOUT=$(mktemp)
+CTX_STDERR=$(mktemp)
+(
+  export CLAUDE_PROJECT_DIR="$FIXTURE_CTX"
+  cd "$FIXTURE_CTX" || exit 1
+  bash "$PROJECT_DIR/.claude/hooks/session-start.sh" >"$CTX_STDOUT" 2>"$CTX_STDERR"
+)
+assert_contains "context: substitutes max_iterations" "5 max iterations" "$(cat "$CTX_STDOUT")"
+assert_contains "context: includes custom rule" "never modify the API contract" "$(cat "$CTX_STDOUT")"
+rm -rf "$FIXTURE_CTX" "$CTX_STDOUT" "$CTX_STDERR"
+
+# ── Phase 3: configurable coaching ───────────────────────────
+
+echo ""
+echo "── configurable coaching ───────────────────"
+
+FIXTURE_COACH=$(make_fixture)
+mkdir -p "$FIXTURE_COACH/.claude"
+cat > "$FIXTURE_COACH/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 4,
+  "gates": [
+    { "name": "fail", "command": "false", "weight": 100 }
+  ],
+  "coaching": {
+    "urgency_at": 3,
+    "on_failure": "CUSTOM: Fix these now.",
+    "on_budget_low": "BUDGET: {remaining} left, hurry!"
+  }
+}
+EOF
+bash -c "
+  export CLAUDE_PROJECT_DIR='$FIXTURE_COACH'
+  source '$PROJECT_DIR/.claude/hooks/state-utils.sh'
+  init_state
+"
+COACH_STDOUT=$(mktemp)
+COACH_STDERR=$(mktemp)
+
+# First pass: iteration 0 -> next is 1, remaining is 3 -> should show urgency
+run_stop_hook "$FIXTURE_COACH" '{"stop_hook_active":false}' "$COACH_STDOUT" "$COACH_STDERR"
+assert_eq "coaching: first pass exits 2" "2" "$?"
+assert_contains "coaching: custom failure message" "CUSTOM: Fix these now." "$(cat "$COACH_STDERR")"
+assert_contains "coaching: urgency at 3 remaining" "3 passes remaining" "$(cat "$COACH_STDERR")"
+
+# Second pass: iteration 1 -> next is 2, remaining is 2 -> should show budget_low
+run_stop_hook "$FIXTURE_COACH" '{"stop_hook_active":false}' "$COACH_STDOUT" "$COACH_STDERR"
+assert_contains "coaching: custom budget low message" "BUDGET: 2 left, hurry!" "$(cat "$COACH_STDERR")"
+
+rm -rf "$FIXTURE_COACH" "$COACH_STDOUT" "$COACH_STDERR"
 
 # ── Summary ──────────────────────────────────────────────────
 

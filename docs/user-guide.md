@@ -4,7 +4,7 @@
 
 The improvement loop uses Claude Code hooks to keep a session alive after Claude thinks it is done. Instead of stopping after one attempt, the Stop hook evaluates the current result, feeds failures back into the same session, and gives Claude another turn until one of these happens:
 
-- all gates pass (total score reached)
+- all required gates pass
 - the loop hits the iteration budget
 - Claude re-enters the Stop hook on the same turn and the breaker allows the session to end
 
@@ -117,13 +117,10 @@ Runs once at the start of a new session. Initializes fresh loop state and inject
 
 The injected context includes:
 
-- the loop rules
-- the configured gate list with weights and commands
-- the max pass budget
-- current git branch
-- Node version
-- package scripts from `package.json`
-- up to 20 discovered `*.test.ts` or `*.spec.ts` files
+- the loop rules and max pass budget
+- the configured gate list with weights, commands, and required/optional labels
+- custom context lines from the `context` array in `looper.json` (if configured)
+- project discovery output: either custom commands from the `discover` config, or the defaults (git branch, node version, package scripts, test files)
 
 ### `PreToolUse`
 
@@ -143,13 +140,11 @@ If the budget is exhausted, the hook exits `2` and tells Claude to summarize wha
 
 ### `PostToolUse`
 
-Runs after `Edit`, `MultiEdit`, and `Write`, but only performs checks for `.ts` and `.tsx` files.
+Runs after `Edit`, `MultiEdit`, and `Write`. Checks are configured via the `checks` array in `.claude/looper.json`.
 
-Checks performed:
+Each check specifies a `command` (with `{file}` placeholder for the edited file path), a `pattern` for matching file types, and an optional `fix` command for auto-correction. Checks with `skip_if_missing` are skipped when the specified file or binary is absent.
 
-- `prettier --check`, followed by silent `prettier --write` auto-fix when available
-- single-file `eslint`
-- `tsc --noEmit --pretty false "$FILE"` syntax/type feedback
+If no `checks` config exists, the hook falls back to hardcoded TypeScript checks (prettier, eslint, tsc).
 
 This hook writes feedback to `stdout`, so Claude sees fast local issues before the full Stop evaluation.
 
@@ -180,7 +175,7 @@ Symbols in the gate results:
 
 - `✓` gate passed and received full points
 - `✗` gate failed and received `0` points
-- `○` gate was skipped because `skip_if_missing` file was absent (full points awarded)
+- `○` gate was skipped (full points awarded) - reasons include: `skip_if_missing` file absent, `run_when` patterns not matching any touched files, or gate disabled
 
 Example gate block:
 
@@ -218,14 +213,57 @@ All configuration lives in `.claude/looper.json`. No hook scripts need to be mod
   "max_iterations": 10,
   "gates": [
     { "name": "typecheck", "command": "npx tsc --noEmit --pretty false", "weight": 30, "skip_if_missing": "tsconfig.json" },
-    { "name": "lint",      "command": "npx eslint . --ext .ts,.tsx",     "weight": 20, "skip_if_missing": "node_modules/.bin/eslint" },
+    { "name": "lint",      "command": "npx eslint .",     "weight": 20, "skip_if_missing": "node_modules/.bin/eslint" },
     { "name": "test",      "command": "npm test",                        "weight": 30 },
-    { "name": "coverage",  "command": "$LOOPER_HOOKS_DIR/check-coverage.sh", "weight": 20 }
+    { "name": "coverage",  "command": "$LOOPER_HOOKS_DIR/check-coverage.sh", "weight": 20, "required": false }
   ]
 }
 ```
 
-The loop stops early when the sum of passing weights equals the sum of all weights.
+The loop completes when all required gates pass. Optional gate fields:
+
+- `required` (default `true`): set `false` for non-blocking gates
+- `run_when`: array of glob patterns; gate skipped if no `files_touched` match
+- `timeout` (default 300): seconds before the command is killed
+- `enabled` (default `true`): set `false` to disable without removing
+
+### Post-edit checks
+
+Configure fast per-file checks that run after each edit:
+
+```json
+{
+  "checks": [
+    { "name": "format",    "command": "npx prettier --check {file}", "fix": "npx prettier --write {file}", "pattern": "*.ts,*.tsx" },
+    { "name": "lint",      "command": "npx eslint {file}",                                                  "pattern": "*.ts,*.tsx" },
+    { "name": "typecheck", "command": "npx tsc --noEmit --pretty false",                                    "pattern": "*.ts,*.tsx" }
+  ]
+}
+```
+
+Use `{file}` as a placeholder for the edited file path. The `fix` field is optional and runs silently after a failing check.
+
+### Context and coaching
+
+Inject custom context into Claude's session and customize urgency messaging:
+
+```json
+{
+  "context": [
+    "This project uses Deno with Oak framework.",
+    "Never modify the API contract in docs/api.md."
+  ],
+  "discover": {
+    "test_files": "find . -name '*.test.*' | head -20",
+    "runtime": "deno --version 2>/dev/null || echo 'not installed'"
+  },
+  "coaching": {
+    "urgency_at": 3,
+    "on_failure": "Fix the specific failures. Do not refactor unrelated code.",
+    "on_budget_low": "Only {remaining} passes left. Fix failing gates only."
+  }
+}
+```
 
 ### Non-TypeScript projects
 
@@ -257,7 +295,7 @@ Go example:
 }
 ```
 
-Gate weights can be any positive integers. The loop stops when passing weights sum to total weights.
+Gate weights can be any positive integers. The loop stops when all required gates pass.
 
 ### Default coverage gate behavior
 
