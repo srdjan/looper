@@ -2,8 +2,10 @@
 
 # Claude Code Native Improvement Loop, Built By Claude
 
-A Claude Code hooks-based workflow that runs quality gates after each response
-and gives Claude another turn when they fail. Up to 10 passes, then it stops.
+Looper is a Claude Code hooks-based improvement loop (~350 lines of shell across 7 files) that keeps
+Claude iterating until quality gates pass. Its strength is simplicity: a 25-line JSON config, binary
+pass/fail gates, and shell scripts that read stdin/stdout. It runs quality gates after each response
+and gives Claude Code another turn when they fail. Up to 10 passes, then it stops.
 
 ## Architecture
 
