@@ -1,0 +1,13 @@
+{
+  "tasks": {
+    "dev": "deno run -A jsr:@std/http/file-server ./site",
+    "check": "deno fmt --check deno.json site/index.html",
+    "fmt": "deno fmt deno.json site/index.html"
+  },
+  "deploy": {
+    "runtime": {
+      "type": "static",
+      "cwd": "./site"
+    }
+  }
+}

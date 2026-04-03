@@ -1,420 +1,1160 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Looper - Agentic Quality Loop for Claude Code</title>
-  <meta name="description" content="Claude Code plugin that keeps Claude iterating until your code compiles, passes lint, and has green tests. Auto-detects Rust, Go, Python, Deno, TypeScript.">
-  <meta name="keywords" content="Claude Code plugin, quality gates, agentic loop, improvement loop, typecheck, lint, test, coverage">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Looper - Claude Code's Quality Loop</title>
+    <meta
+      name="description"
+      content="Looper keeps Claude iterating until your code compiles, passes lint, and clears tests. A striking, package-based quality loop for Claude Code."
+    >
+    <meta
+      name="keywords"
+      content="Claude Code plugin, quality gates, improvement loop, agentic QA, typecheck, lint, test, coverage"
+    >
 
-  <meta property="og:title" content="Looper - Agentic Quality Loop for Claude Code">
-  <meta property="og:description" content="The only agentic quality loop for Claude Code. Install once, get code that compiles, passes lint, and ships with green tests.">
-  <meta property="og:type" content="website">
-  <meta property="og:image" content="https://raw.githubusercontent.com/srdjan/looper/main/assets/looper-logo.png">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Looper - Agentic Quality Loop for Claude Code">
-  <meta name="twitter:description" content="The only agentic quality loop for Claude Code. Install once, get code that compiles, passes lint, and ships with green tests.">
+    <meta property="og:title" content="Looper - Claude Code's Quality Loop">
+    <meta
+      property="og:description"
+      content="Stop doing Claude's QA by hand. Looper catches failures, feeds them back, and keeps the loop moving."
+    >
+    <meta property="og:type" content="website">
+    <meta
+      property="og:image"
+      content="https://raw.githubusercontent.com/srdjan/looper/main/assets/looper-logo.png"
+    >
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Looper - Claude Code's Quality Loop">
+    <meta
+      name="twitter:description"
+      content="A package-based loop that keeps Claude iterating until the code is clean."
+    >
 
-  <link rel="icon" type="image/png" href="../assets/looper-logo.png">
+    <link
+      rel="icon"
+      href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="18" fill="%2302273A"/><path d="M11 24c0-6.6 5.4-12 12-12 4.2 0 7.8 2 10 5.6 2.2-3.6 5.8-5.6 10-5.6 6.6 0 12 5.4 12 12v16c0 6.6-5.4 12-12 12-4.2 0-7.8-2-10-5.6-2.2 3.6-5.8 5.6-10 5.6-6.6 0-12-5.4-12-12V24Zm12-6a6 6 0 0 0-6 6v16a6 6 0 0 0 12 0V24a6 6 0 0 0-6-6Zm20 0a6 6 0 0 0-6 6v16a6 6 0 0 0 12 0V24a6 6 0 0 0-6-6Z" fill="%23EC7A93"/></svg>'
+    >
 
-  <style>
-    @layer reset, base, layout, components, utilities;
+    <style>
+      @layer reset, base, layout, components, motion;
 
-    @layer reset {
-      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    }
-
-    @layer base {
-      :root {
-        --bg: #0c1e39;
-        --bg-code: #0c3634;
-        --text: #e6edf3;
-        --muted: #8b949e;
-        --blue: #4a9eff;
-        --green: #51cf66;
-        --red: #ff6b6b;
-        --orange: #ffa94d;
-        --border: #30363d;
-        --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
-        --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-        --max-w: 720px;
+      @layer reset {
+        *, *::before, *::after {
+          box-sizing: border-box;
+        }
+        html, body, h1, h2, h3, p, ul, ol, dl, dd, dt, pre {
+          margin: 0;
+          padding: 0;
+        }
+        img {
+          display: block;
+          max-width: 100%;
+        }
+        button, input, textarea, select {
+          font: inherit;
+        }
       }
 
-      html {
-        background: var(--bg);
-        color: var(--text);
-        font-family: var(--font-sans);
-        font-size: 17px;
-        line-height: 1.65;
-        -webkit-font-smoothing: antialiased;
+      @layer base {
+        :root {
+          --seashell: #fff5ee;
+          --green-wave: #c3dcd5;
+          --murky-depths: #02273a;
+          --philodendron: #116356;
+          --apricot-glow: #ffce79;
+          --so-charming: #ec7a93;
+          --ink: #123244;
+          --ink-soft: rgba(2, 39, 58, 0.72);
+          --line: rgba(2, 39, 58, 0.14);
+          --shadow: 0 28px 80px rgba(2, 39, 58, 0.16);
+          --font-display:
+            "Iowan Old Style",
+            "Palatino Linotype",
+            "Book Antiqua",
+            Palatino,
+            Georgia,
+            serif;
+          --font-sans:
+            "Avenir Next",
+            "Segoe UI",
+            "Helvetica Neue",
+            Helvetica,
+            sans-serif;
+          --font-mono:
+            "SFMono-Regular",
+            "Cascadia Code",
+            "Source Code Pro",
+            Menlo,
+            Consolas,
+            monospace;
+          --content: min(1120px, calc(100vw - 2.4rem));
+        }
+
+        html {
+          background:
+            radial-gradient(
+              circle at 12% 12%,
+              rgba(255, 245, 238, 0.96),
+              transparent 30%
+            ),
+            linear-gradient(
+            135deg,
+            var(--green-wave) 0%,
+            var(--seashell) 38%,
+            var(--apricot-glow) 69%,
+            var(--so-charming) 100%
+          );
+          color: var(--ink);
+          scroll-behavior: smooth;
+        }
+
+        body {
+          min-height: 100vh;
+          font-family: var(--font-sans);
+          font-size: 18px;
+          line-height: 1.55;
+          -webkit-font-smoothing: antialiased;
+          text-rendering: optimizeLegibility;
+          overflow-x: hidden;
+        }
+
+        a {
+          color: inherit;
+          text-decoration: none;
+        }
+
+        p {
+          color: var(--ink-soft);
+        }
+
+        code, pre {
+          font-family: var(--font-mono);
+        }
+
+        ::selection {
+          background: rgba(236, 122, 147, 0.28);
+        }
       }
 
-      a { color: var(--blue); text-decoration: none; }
-      a:hover { text-decoration: underline; }
+      @layer layout {
+        .page-shell {
+          position: relative;
+          isolation: isolate;
+        }
 
-      h1, h2, h3 { font-family: var(--font-sans); line-height: 1.25; font-weight: 600; }
-      h2 { font-size: 1.4rem; margin-top: 3.5rem; margin-bottom: 0.75rem; color: var(--text); }
-      h3 { font-size: 1.1rem; margin-top: 1.5rem; margin-bottom: 0.5rem; color: var(--muted); }
+        .topbar,
+        .section-inner,
+        .footer-inner {
+          width: var(--content);
+          margin: 0 auto;
+        }
 
-      p { margin-bottom: 1rem; }
+        .hero {
+          position: relative;
+          min-height: 100svh;
+          padding: 1.2rem 0 3.4rem;
+          overflow: clip;
+        }
 
-      code {
-        font-family: var(--font-mono);
-        font-size: 0.9em;
-        background: var(--bg-code);
-        padding: 0.15em 0.4em;
-        border-radius: 4px;
+        .topbar {
+          position: relative;
+          z-index: 3;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 1rem;
+          padding: 0.8rem 0 0;
+        }
+
+        .hero-inner {
+          position: relative;
+          z-index: 2;
+          width: var(--content);
+          margin: 0 auto;
+          display: grid;
+          grid-template-columns: minmax(0, 0.95fr) minmax(320px, 0.9fr);
+          gap: clamp(2rem, 4vw, 4.5rem);
+          align-items: end;
+          min-height: calc(100svh - 4.5rem);
+          padding: 3.5rem 0 1rem;
+        }
+
+        .section {
+          position: relative;
+          padding: clamp(4.5rem, 9vw, 7.5rem) 0;
+        }
+
+        .section.split .section-inner,
+        .section.architecture .section-inner,
+        .section.cta .section-inner {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: clamp(1.8rem, 4vw, 4.2rem);
+        }
+
+        .footer {
+          padding: 2rem 0 3rem;
+        }
+
+        .footer-inner {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 1rem;
+          padding-top: 1.2rem;
+          border-top: 1px solid rgba(2, 39, 58, 0.18);
+          color: rgba(2, 39, 58, 0.7);
+          font-size: 0.92rem;
+        }
+
+        @media (max-width: 900px) {
+          .hero {
+            min-height: auto;
+            padding-bottom: 2rem;
+          }
+
+          .hero-inner,
+          .section.split .section-inner,
+          .section.architecture .section-inner,
+          .section.cta .section-inner,
+          .footer-inner {
+            grid-template-columns: 1fr;
+          }
+
+          .hero-inner {
+            min-height: auto;
+            padding-top: 2.5rem;
+          }
+
+          .footer-inner {
+            display: grid;
+          }
+        }
       }
 
-      pre {
-        font-family: var(--font-mono);
-        font-size: 0.85rem;
-        line-height: 1.5;
-        background: var(--bg-code);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 1.25rem 1.5rem;
-        overflow-x: auto;
-        margin-bottom: 1.5rem;
-      }
-      pre code {
-        background: none;
-        padding: 0;
-        font-size: inherit;
-      }
-    }
+      @layer components {
+        .brand-lockup {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.75rem;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          font-size: 0.78rem;
+        }
 
-    @layer layout {
-      header, main, footer {
-        max-width: var(--max-w);
-        margin: 0 auto;
-        padding: 0 1.25rem;
+        .brand-mark {
+          width: 2.7rem;
+          height: 2.7rem;
+          border-radius: 0.9rem;
+          background: rgba(255, 245, 238, 0.85);
+          box-shadow: 0 10px 30px rgba(2, 39, 58, 0.11);
+          display: grid;
+          place-items: center;
+        }
+
+        .brand-mark img {
+          width: 1.55rem;
+          height: 1.55rem;
+        }
+
+        .brand-mark svg {
+          width: 1.65rem;
+          height: 1.65rem;
+        }
+
+        .top-links {
+          display: flex;
+          align-items: center;
+          gap: 1.2rem;
+          font-size: 0.95rem;
+          color: rgba(2, 39, 58, 0.78);
+        }
+
+        .top-links a:last-child {
+          padding: 0.78rem 1rem;
+          border-radius: 999px;
+          background: rgba(2, 39, 58, 0.07);
+          backdrop-filter: blur(12px);
+        }
+
+        .hero-copy {
+          position: relative;
+          padding: 2rem 0 1.5rem;
+        }
+
+        .eyebrow {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.55rem;
+          padding: 0.45rem 0.8rem;
+          border-radius: 999px;
+          border: 1px solid rgba(2, 39, 58, 0.12);
+          color: rgba(2, 39, 58, 0.72);
+          background: rgba(255, 245, 238, 0.56);
+          backdrop-filter: blur(12px);
+          font-size: 0.82rem;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+
+        .hero-copy h1 {
+          margin-top: 1rem;
+          font-family: var(--font-display);
+          font-size: clamp(3.3rem, 7.3vw, 7rem);
+          line-height: 0.94;
+          font-weight: 700;
+          letter-spacing: -0.05em;
+          max-width: 8.3ch;
+          color: var(--murky-depths);
+        }
+
+        .hero-copy h1 em {
+          display: inline-block;
+          color: var(--philodendron);
+          font-style: normal;
+        }
+
+        .lede {
+          margin-top: 1.25rem;
+          max-width: 34rem;
+          font-size: 1.12rem;
+        }
+
+        .hero-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.9rem;
+          margin-top: 1.8rem;
+        }
+
+        .button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.65rem;
+          min-height: 3.2rem;
+          padding: 0.9rem 1.2rem;
+          border-radius: 999px;
+          transition:
+            transform 180ms ease,
+            background-color 180ms ease,
+            color 180ms ease,
+            border-color 180ms ease;
+        }
+
+        .button.primary {
+          background: var(--murky-depths);
+          color: var(--seashell);
+          box-shadow: var(--shadow);
+        }
+
+        .button.secondary {
+          border: 1px solid rgba(2, 39, 58, 0.16);
+          background: rgba(255, 245, 238, 0.4);
+          color: var(--murky-depths);
+        }
+
+        .button:hover {
+          transform: translateY(-2px);
+        }
+
+        .hero-install {
+          display: inline-flex;
+          align-items: baseline;
+          gap: 0.85rem;
+          flex-wrap: wrap;
+          margin-top: 1.2rem;
+          font-size: 0.92rem;
+          color: rgba(2, 39, 58, 0.68);
+        }
+
+        .hero-install code {
+          padding: 0.2rem 0.55rem;
+          border-radius: 999px;
+          background: rgba(2, 39, 58, 0.08);
+          color: var(--murky-depths);
+        }
+
+        .hero-stage {
+          position: relative;
+          min-height: min(76svh, 760px);
+          border-radius: 2.2rem;
+          overflow: hidden;
+          box-shadow: var(--shadow);
+          background: linear-gradient(
+            145deg,
+            rgba(255, 245, 238, 0.55),
+            rgba(195, 220, 213, 0.32)
+          );
+        }
+
+        .stage-plane {
+          position: absolute;
+          inset: auto;
+        }
+
+        .plane-seashell {
+          inset: 0 48% 48% 0;
+          background: rgba(255, 245, 238, 0.9);
+        }
+
+        .plane-wave {
+          inset: 0 0 52% 48%;
+          background: rgba(195, 220, 213, 0.82);
+        }
+
+        .plane-depths {
+          inset: 0 0 25% 53%;
+          background: linear-gradient(
+            180deg,
+            rgba(2, 39, 58, 0.98),
+            rgba(2, 39, 58, 0.92)
+          );
+          clip-path: polygon(18% 0, 100% 0, 100% 100%, 62% 100%, 0 45%);
+        }
+
+        .plane-apricot {
+          inset: 52% 40% 0 0;
+          background: linear-gradient(
+            180deg,
+            rgba(255, 206, 121, 0.88),
+            rgba(255, 206, 121, 0.68)
+          );
+        }
+
+        .plane-charming {
+          inset: 58% 0 0 34%;
+          background: linear-gradient(
+            180deg,
+            rgba(236, 122, 147, 0.9),
+            rgba(236, 122, 147, 0.72)
+          );
+        }
+
+        .plane-philo {
+          inset: 33% 18% 18% 35%;
+          background: linear-gradient(
+            135deg,
+            rgba(17, 99, 86, 0.86),
+            rgba(17, 99, 86, 0.68)
+          );
+          clip-path: polygon(0 0, 58% 0, 100% 38%, 100% 100%, 0 100%);
+        }
+
+        .stage-orbit {
+          position: absolute;
+          inset: 8% 10% auto auto;
+          width: min(52%, 320px);
+          aspect-ratio: 1;
+          border-radius: 50%;
+          border: 1px solid rgba(255, 245, 238, 0.2);
+          opacity: 0.95;
+        }
+
+        .stage-orbit::before,
+        .stage-orbit::after {
+          content: "";
+          position: absolute;
+          border-radius: 50%;
+          inset: 12%;
+          border: 1px solid rgba(255, 245, 238, 0.14);
+        }
+
+        .stage-orbit::after {
+          inset: 28%;
+        }
+
+        .stage-terminal {
+          position: absolute;
+          left: clamp(1.2rem, 3vw, 2rem);
+          right: clamp(1.2rem, 3vw, 2rem);
+          bottom: clamp(1.2rem, 3vw, 2rem);
+          padding: 1.1rem 1.15rem 1rem;
+          border-radius: 1.35rem;
+          background: rgba(2, 39, 58, 0.9);
+          color: rgba(255, 245, 238, 0.94);
+          backdrop-filter: blur(12px);
+        }
+
+        .terminal-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 1rem;
+          font-size: 0.78rem;
+          text-transform: uppercase;
+          letter-spacing: 0.09em;
+          color: rgba(255, 245, 238, 0.58);
+        }
+
+        .terminal-code {
+          margin-top: 0.9rem;
+          font-size: 0.88rem;
+          line-height: 1.6;
+          white-space: pre-wrap;
+        }
+
+        .terminal-pass {
+          color: var(--green-wave);
+        }
+        .terminal-fail {
+          color: var(--so-charming);
+        }
+        .terminal-warn {
+          color: var(--apricot-glow);
+        }
+
+        .section-label {
+          display: block;
+          margin-bottom: 0.9rem;
+          color: rgba(2, 39, 58, 0.56);
+          font-size: 0.82rem;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+
+        .section h2 {
+          font-family: var(--font-display);
+          font-size: clamp(2.4rem, 4.7vw, 4.3rem);
+          line-height: 0.96;
+          letter-spacing: -0.04em;
+          color: var(--murky-depths);
+          max-width: 9.5ch;
+        }
+
+        .section.intro {
+          background:
+            linear-gradient(
+              180deg,
+              rgba(255, 245, 238, 0.18),
+              rgba(255, 245, 238, 0.55)
+            ),
+            linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0),
+            rgba(255, 245, 238, 0.2)
+          );
+        }
+
+        .intro-grid {
+          display: grid;
+          grid-template-columns: 1.15fr 0.85fr;
+          gap: clamp(1.7rem, 4vw, 4rem);
+          align-items: start;
+        }
+
+        .intro-copy p {
+          max-width: 40rem;
+          margin-top: 1.05rem;
+          font-size: 1.05rem;
+        }
+
+        .statement {
+          padding-top: 0.35rem;
+          font-family: var(--font-display);
+          font-size: clamp(1.9rem, 3vw, 2.9rem);
+          line-height: 1.02;
+          letter-spacing: -0.04em;
+          color: var(--philodendron);
+        }
+
+        .workflow-strip {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 1px;
+          margin-top: 2.2rem;
+          background: rgba(2, 39, 58, 0.11);
+        }
+
+        .workflow-step {
+          padding: 1.4rem 1.2rem 1.5rem;
+          min-height: 15rem;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+
+        .workflow-step:nth-child(1) {
+          background: rgba(255, 245, 238, 0.72);
+        }
+        .workflow-step:nth-child(2) {
+          background: rgba(195, 220, 213, 0.78);
+        }
+        .workflow-step:nth-child(3) {
+          background: rgba(255, 206, 121, 0.58);
+        }
+
+        .workflow-step strong {
+          display: block;
+          font-size: 0.84rem;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: rgba(2, 39, 58, 0.54);
+        }
+
+        .workflow-step h3 {
+          margin-top: 1rem;
+          font-family: var(--font-display);
+          font-size: 1.8rem;
+          line-height: 0.98;
+          letter-spacing: -0.03em;
+        }
+
+        .workflow-step p {
+          margin-top: 2.8rem;
+        }
+
+        .surface {
+          position: relative;
+          padding: clamp(1.4rem, 2vw, 2rem);
+          border-radius: 1.8rem;
+          background: rgba(255, 245, 238, 0.5);
+          box-shadow: inset 0 0 0 1px rgba(2, 39, 58, 0.08);
+        }
+
+        .surface.dark {
+          background: linear-gradient(
+            180deg,
+            rgba(2, 39, 58, 0.98),
+            rgba(2, 39, 58, 0.93)
+          );
+          color: var(--seashell);
+          box-shadow: var(--shadow);
+        }
+
+        .surface.dark p,
+        .surface.dark .small-mono {
+          color: rgba(255, 245, 238, 0.7);
+        }
+
+        .stack-list,
+        .package-list,
+        .tech-list {
+          list-style: none;
+          display: grid;
+          gap: 0.9rem;
+          margin-top: 1.3rem;
+        }
+
+        .stack-list li,
+        .package-list li,
+        .tech-list li {
+          display: flex;
+          justify-content: space-between;
+          gap: 1rem;
+          padding-bottom: 0.7rem;
+          border-bottom: 1px solid rgba(2, 39, 58, 0.1);
+        }
+
+        .surface.dark .stack-list li,
+        .surface.dark .package-list li {
+          border-bottom-color: rgba(255, 245, 238, 0.12);
+        }
+
+        .stack-list span:last-child,
+        .package-list span:last-child,
+        .tech-list span:last-child {
+          color: rgba(2, 39, 58, 0.55);
+          font-family: var(--font-mono);
+          font-size: 0.88rem;
+          text-align: right;
+        }
+
+        .surface.dark .stack-list span:last-child,
+        .surface.dark .package-list span:last-child {
+          color: rgba(255, 245, 238, 0.58);
+        }
+
+        .config-block,
+        .architecture-block {
+          margin-top: 1.4rem;
+          padding: 1.2rem 1.15rem;
+          border-radius: 1.2rem;
+          font-size: 0.88rem;
+          line-height: 1.65;
+          white-space: pre-wrap;
+          overflow-x: auto;
+        }
+
+        .config-block {
+          background: rgba(2, 39, 58, 0.08);
+          color: var(--murky-depths);
+        }
+
+        .architecture-block {
+          background: rgba(255, 245, 238, 0.06);
+        }
+
+        .cta-copy {
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+        }
+
+        .cta-copy p {
+          max-width: 32rem;
+          margin-top: 1rem;
+        }
+
+        .cta-install {
+          display: grid;
+          gap: 1rem;
+          align-content: center;
+          padding: clamp(1.4rem, 3vw, 2.1rem);
+          border-radius: 1.8rem;
+          background: linear-gradient(
+            135deg,
+            rgba(255, 245, 238, 0.96),
+            rgba(255, 206, 121, 0.75) 36%,
+            rgba(236, 122, 147, 0.7) 100%
+          );
+          box-shadow: var(--shadow);
+        }
+
+        .cta-install .install-label {
+          font-size: 0.82rem;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          color: rgba(2, 39, 58, 0.56);
+        }
+
+        .cta-install code {
+          display: inline-block;
+          width: fit-content;
+          max-width: 100%;
+          padding: 0.95rem 1rem;
+          border-radius: 1rem;
+          background: rgba(2, 39, 58, 0.92);
+          color: var(--seashell);
+          overflow-x: auto;
+        }
+
+        .cta-links {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 1rem;
+          color: rgba(2, 39, 58, 0.72);
+        }
+
+        .small-mono {
+          font-family: var(--font-mono);
+          font-size: 0.82rem;
+          letter-spacing: 0.02em;
+        }
+
+        @media (max-width: 900px) {
+          .top-links {
+            display: none;
+          }
+
+          .hero-copy h1,
+          .section h2,
+          .statement {
+            max-width: none;
+          }
+
+          .intro-grid,
+          .workflow-strip {
+            grid-template-columns: 1fr;
+          }
+
+          .workflow-step {
+            min-height: auto;
+          }
+
+          .hero-stage {
+            min-height: 28rem;
+          }
+        }
       }
 
-      header {
-        padding-top: 3rem;
-        padding-bottom: 1rem;
-        text-align: center;
-      }
+      @layer motion {
+        .drift {
+          animation: drift 13s ease-in-out infinite alternate;
+          transform-origin: center;
+        }
 
-      main { padding-bottom: 4rem; }
+        .pulse {
+          animation: pulse 8s ease-in-out infinite;
+        }
 
-      footer {
-        padding-top: 2rem;
-        padding-bottom: 3rem;
-        border-top: 1px solid var(--border);
-        text-align: center;
-        color: var(--muted);
-        font-size: 0.85rem;
-      }
+        .reveal {
+          opacity: 0;
+          transform: translateY(28px);
+          transition: opacity 700ms ease, transform 700ms ease;
+        }
 
-      section { margin-bottom: 2rem; }
-    }
+        .reveal.is-visible {
+          opacity: 1;
+          transform: translateY(0);
+        }
 
-    @layer components {
-      .logo {
-        width: 120px;
-        height: 120px;
-        border-radius: 24px;
-        margin-bottom: 1.5rem;
-      }
+        .delay-1 {
+          transition-delay: 90ms;
+        }
+        .delay-2 {
+          transition-delay: 180ms;
+        }
+        .delay-3 {
+          transition-delay: 270ms;
+        }
 
-      .headline {
-        font-size: clamp(1.8rem, 5vw, 2.4rem);
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        margin-bottom: 0.75rem;
-      }
-      .headline span { color: var(--blue); }
+        @keyframes drift {
+          0% {
+            transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+          }
+          100% {
+            transform: translate3d(0, -12px, 0) rotate(5deg) scale(1.03);
+          }
+        }
 
-      .subheadline {
-        font-size: 1.05rem;
-        color: var(--muted);
-        max-width: 560px;
-        margin: 0 auto 2rem;
-        line-height: 1.6;
-      }
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 0.65;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1.04);
+          }
+        }
 
-      .install-block {
-        border: 2px solid var(--blue);
-        border-radius: 8px;
-        padding: 1rem 1.5rem;
-        margin: 2rem 0;
-        text-align: center;
-      }
-      .install-block pre {
-        margin: 0;
-        border: none;
-        background: transparent;
-        padding: 0;
-        text-align: center;
-        font-size: 1rem;
-      }
-      .install-block .label {
-        font-size: 0.8rem;
-        color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        margin-bottom: 0.3rem;
-      }
+        @media (prefers-reduced-motion: reduce) {
+          html {
+            scroll-behavior: auto;
+          }
 
-      .problem {
-        color: var(--muted);
-        font-style: italic;
-        border-left: 3px solid var(--border);
-        padding-left: 1.25rem;
-        margin-bottom: 1.5rem;
-      }
+          .drift,
+          .pulse {
+            animation: none;
+          }
 
-      .steps {
-        display: grid;
-        gap: 1rem;
-        margin: 1.5rem 0;
+          .reveal,
+          .reveal.is-visible {
+            opacity: 1;
+            transform: none;
+            transition: none;
+          }
+        }
       }
-      .step {
-        display: grid;
-        grid-template-columns: 2.5rem 1fr;
-        gap: 0.75rem;
-        align-items: start;
-      }
-      .step-num {
-        width: 2rem;
-        height: 2rem;
-        border-radius: 50%;
-        background: var(--bg-code);
-        border: 1px solid var(--border);
-        display: grid;
-        place-items: center;
-        font-family: var(--font-mono);
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: var(--blue);
-        flex-shrink: 0;
-      }
+    </style>
+  </head>
 
-      .stack-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 0.75rem;
-        margin: 1.25rem 0;
-      }
-      .stack-card {
-        background: var(--bg-code);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 0.85rem 1rem;
-      }
-      .stack-card strong {
-        display: block;
-        font-size: 0.95rem;
-        margin-bottom: 0.25rem;
-      }
-      .stack-card .gates {
-        font-family: var(--font-mono);
-        font-size: 0.78rem;
-        color: var(--muted);
-      }
+  <body>
+    <div class="page-shell" id="top">
+      <section class="hero">
+        <div class="topbar">
+          <a class="brand-lockup" href="#top" aria-label="Looper home">
+            <span class="brand-mark">
+              <svg viewBox="0 0 64 64" role="img" aria-label="Looper mark">
+                <rect width="64" height="64" rx="18" fill="#02273A"></rect>
+                <path
+                  d="M11 24c0-6.6 5.4-12 12-12 4.2 0 7.8 2 10 5.6 2.2-3.6 5.8-5.6 10-5.6 6.6 0 12 5.4 12 12v16c0 6.6-5.4 12-12 12-4.2 0-7.8-2-10-5.6-2.2 3.6-5.8 5.6-10 5.6-6.6 0-12-5.4-12-12V24Zm12-6a6 6 0 0 0-6 6v16a6 6 0 0 0 12 0V24a6 6 0 0 0-6-6Zm20 0a6 6 0 0 0-6 6v16a6 6 0 0 0 12 0V24a6 6 0 0 0-6-6Z"
+                  fill="#EC7A93"
+                >
+                </path>
+              </svg>
+            </span>
+            <span>Looper</span>
+          </a>
 
-      .gate-output {
-        color: var(--text);
-      }
-      .gate-output .pass { color: var(--green); }
-      .gate-output .fail { color: var(--red); }
-      .gate-output .skip { color: var(--orange); }
-      .gate-output .dim { color: var(--muted); }
+          <nav class="top-links" aria-label="Primary">
+            <a href="https://github.com/srdjan/looper">GitHub</a>
+            <a
+              href="https://github.com/srdjan/looper/blob/main/docs/user-guide.md"
+            >Docs</a>
+            <a href="#install">Install</a>
+          </nav>
+        </div>
 
-      .pkg-tree {
-        color: var(--muted);
-      }
-      .pkg-tree .highlight { color: var(--text); }
+        <div class="hero-inner">
+          <div class="hero-copy">
+            <div class="reveal is-visible">
+              <span class="eyebrow"
+              >Claude Code / quality loop / package-based</span>
+            </div>
 
-      .final-cta {
-        text-align: center;
-        margin-top: 3rem;
-        padding-top: 2rem;
-      }
-      .final-cta p {
-        color: var(--muted);
-        font-size: 0.95rem;
-      }
-    }
+            <h1 class="reveal is-visible delay-1">
+              Claude can sprint. <em>Looper makes it land clean.</em>
+            </h1>
 
-    @layer utilities {
-      .muted { color: var(--muted); }
-      .small { font-size: 0.85rem; }
-    }
-  </style>
-</head>
+            <p class="lede reveal is-visible delay-2">
+              Looper intercepts Claude's stop signal, runs your real gates, and
+              feeds failures straight back into the session. No pasteback
+              ritual. No human QA relay. Just another pass until the code is
+              actually ready.
+            </p>
 
-<body>
+            <div class="hero-actions reveal is-visible delay-3">
+              <a class="button primary" href="#install">Install Looper</a>
+              <a
+                class="button secondary"
+                href="https://github.com/srdjan/looper/blob/main/docs/user-guide.md"
+              >Read the guide</a>
+            </div>
 
-<header>
-  <img src="../assets/looper-logo.png" alt="Looper" class="logo" width="120" height="120">
-  <h1 class="headline">Claude writes code. <span>Looper makes it work.</span></h1>
-  <p class="subheadline">The only agentic quality loop for Claude Code. Install once, get code that compiles, passes lint, and ships with green tests. Every time.</p>
-</header>
+            <div class="hero-install reveal is-visible delay-3">
+              <span>Requires <code>jq</code></span>
+              <span>Local dev: <code>claude --plugin-dir
+                  /path/to/looper</code></span>
+            </div>
+          </div>
 
-<main>
+          <div class="hero-stage reveal is-visible delay-2" aria-hidden="true">
+            <div class="stage-plane plane-seashell"></div>
+            <div class="stage-plane plane-wave"></div>
+            <div class="stage-plane plane-apricot drift"></div>
+            <div class="stage-plane plane-charming pulse"></div>
+            <div class="stage-plane plane-philo"></div>
+            <div class="stage-plane plane-depths"></div>
+            <div class="stage-orbit drift"></div>
 
-  <!-- The Problem -->
-  <section>
-    <p class="problem">You prompt Claude. Claude writes code. You run the tests. They fail. You paste the errors back. Claude fixes one thing, breaks another. You paste again. Three rounds later you're doing Claude's QA by hand.</p>
+            <div class="stage-terminal">
+              <div class="terminal-top">
+                <span>pass 02 / stop hook</span>
+                <span>Looper active</span>
+              </div>
+              <div class="terminal-code">
+                <span class="terminal-pass">v typecheck</span> 30/30
+                <span class="terminal-pass">v lint</span> 20/20
+                <span class="terminal-fail">x test</span> 0/30 FAIL
+                src/user.test.ts
+                <span class="terminal-warn">o coverage</span> -/20 skipped Fix
+                the specific failure. 8 passes remaining.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-    <p>Looper intercepts Claude's stop signal and runs your quality gates automatically. If anything fails, Claude gets the errors and keeps going. No copy-paste. No babysitting. The loop runs until your code is clean or the budget runs out.</p>
-  </section>
+      <main>
+        <section class="section intro">
+          <div class="section-inner">
+            <div class="intro-grid">
+              <div class="intro-copy reveal">
+                <span class="section-label">Why it exists</span>
+                <h2>Stop acting as Claude's human quality gate.</h2>
+                <p>
+                  The usual loop is wasteful: Claude writes code, you run the
+                  checks, you paste the failure, Claude fixes one thing and
+                  breaks another. Looper turns that into an internal loop
+                  instead of a handoff.
+                </p>
+                <p>
+                  When Claude tries to stop, Looper runs typecheck, lint, test,
+                  coverage, or whatever your project demands. If a gate fails,
+                  Claude sees the failure output immediately and keeps going.
+                </p>
+              </div>
 
-  <!-- Install -->
-  <section>
-    <div class="install-block">
-      <div class="label">One command. Zero config.</div>
-      <pre><code>claude plugin install looper@claude-plugins-official</code></pre>
+              <div class="statement reveal delay-1">
+                One install.<br>
+                Real commands.<br>
+                Fewer false finishes.
+              </div>
+            </div>
+
+            <div class="workflow-strip reveal delay-2">
+              <article class="workflow-step">
+                <div>
+                  <strong>01 / Edit</strong>
+                  <h3>Track every touched file.</h3>
+                </div>
+                <p>
+                  Looper watches Claude's edits and runs fast local checks after
+                  each write, so problems surface while the change is still
+                  warm.
+                </p>
+              </article>
+              <article class="workflow-step">
+                <div>
+                  <strong>02 / Evaluate</strong>
+                  <h3>Run your actual gates.</h3>
+                </div>
+                <p>
+                  Typecheck, lint, test, coverage. Every gate is just a shell
+                  command, so the loop matches the real repository instead of a
+                  demo policy.
+                </p>
+              </article>
+              <article class="workflow-step">
+                <div>
+                  <strong>03 / Continue</strong>
+                  <h3>Push Claude back with specifics.</h3>
+                </div>
+                <p>
+                  Failure output is injected into the session. Claude gets
+                  another pass with concrete errors, not vague encouragement.
+                </p>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="section split">
+          <div class="section-inner">
+            <div class="surface reveal">
+              <span class="section-label">Auto-configuration</span>
+              <h2>Detect the stack. Start from the right preset.</h2>
+              <p style="margin-top: 1rem">
+                On first session start, Looper checks marker files and writes a
+                matching <code>.claude/looper.json</code>. You get a working
+                loop before you ever open a config file.
+              </p>
+
+              <ul class="stack-list">
+                <li>
+                  <span>TypeScript + ESLint</span><span>tsc / eslint / prettier
+                    / jest</span>
+                </li>
+                <li>
+                  <span>TypeScript + Biome</span><span>tsc / biome /
+                    vitest</span>
+                </li>
+                <li><span>Deno</span><span>check / lint / test / fmt</span></li>
+                <li><span>Python</span><span>mypy / ruff / pytest</span></li>
+                <li><span>Go</span><span>build / vet / test</span></li>
+                <li>
+                  <span>Rust</span><span>check / clippy / test / fmt</span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="surface dark reveal delay-1">
+              <span class="section-label">Claude context</span>
+              <h2 style="color: var(--seashell)">
+                What the model actually sees when the loop bites.
+              </h2>
+              <p style="margin-top: 1rem">
+                Looper does not say “something failed.” It sends back the real
+                failing output, the current score, and the remaining budget.
+              </p>
+
+              <div class="architecture-block">
+                QUALITY GATES -- PASS 2/10 Score: 80/100 History: [50, 80]
+                ---------------------------------- v typecheck 30/30 v lint
+                20/20 x test 0/30 o coverage -/20
+                ---------------------------------- FAIL src/user.test.ts x
+                should validate email format Expected: true Received: false
+                ---------------------------------- Fix the specific failure. 8
+                passes remaining.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section architecture">
+          <div class="section-inner">
+            <div class="surface dark reveal">
+              <span class="section-label">Package system</span>
+              <h2 style="color: var(--seashell)">
+                Quality gates are only the opening move.
+              </h2>
+              <p style="margin-top: 1rem">
+                The kernel is intentionally small. Packages define the behavior,
+                so the same loop mechanics can drive TDD cycles, security
+                audits, or documentation checks.
+              </p>
+
+              <ul class="package-list">
+                <li>
+                  <span>session-start.sh</span><span>inject project
+                    context</span>
+                </li>
+                <li>
+                  <span>pre-tool-use.sh</span><span>filter or annotate
+                    edits</span>
+                </li>
+                <li>
+                  <span>post-tool-use.sh</span><span>run fast file checks</span>
+                </li>
+                <li><span>stop.sh</span><span>vote done or continue</span></li>
+              </ul>
+            </div>
+
+            <div class="surface reveal delay-1">
+              <span class="section-label">Under the hood</span>
+              <h2>A calm kernel with real constraints.</h2>
+              <p style="margin-top: 1rem">
+                Looper is built around four Claude Code hooks, shared state, and
+                hard stop conditions that prevent infinite churn. It stays
+                simple enough to debug because the moving parts are plain shell
+                and <code>jq</code>.
+              </p>
+
+              <div class="config-block">
+                SessionStart init state, inject gate list PreToolUse track
+                touched files, enforce budget PostToolUse run per-file checks
+                after edits Stop evaluate gates, score, continue or finish
+                Circuit breakers: - re-entry guard - iteration budget -
+                two-phase stop model
+              </div>
+
+              <p class="small-mono" style="margin-top: 1rem">
+                No build step. No npm dependency chain. Just a loop you can
+                inspect end to end.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="section cta" id="install">
+          <div class="section-inner">
+            <div class="cta-copy reveal">
+              <span class="section-label">Install</span>
+              <h2>Get code that survives contact with your repository.</h2>
+              <p>
+                Looper is for teams and solo builders who want Claude to keep
+                working until the code clears real gates. Install once, tune
+                when needed, and stop babysitting the finish line.
+              </p>
+              <div class="cta-links" style="margin-top: 1.5rem">
+                <a href="https://github.com/srdjan/looper">GitHub</a>
+                <a
+                  href="https://github.com/srdjan/looper/blob/main/docs/user-guide.md"
+                >Docs</a>
+                <a
+                  href="https://github.com/srdjan/looper/blob/main/docs/architecture.md"
+                >Architecture</a>
+              </div>
+            </div>
+
+            <div class="cta-install reveal delay-1">
+              <span class="install-label"
+              >One command. Then Claude keeps going.</span>
+              <code>claude plugin install looper@claude-plugins-official</code>
+              <p>
+                Need custom gates? Edit <code>.claude/looper.json</code> or run
+                <code>/looper:looper-config</code> for guided setup.
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <div class="footer-inner">
+          <span>Built by <a href="https://github.com/srdjan"
+            >Srdjan Strbanovic</a>. Open source under MIT.</span>
+          <span>Looper makes Claude finish what it starts.</span>
+        </div>
+      </footer>
     </div>
-    <p class="muted small" style="text-align:center">Requires <code>jq</code>. Local dev: <code>claude --plugin-dir /path/to/looper</code></p>
-  </section>
 
-  <!-- How it works -->
-  <h2>How it works</h2>
-  <section>
-    <div class="steps">
-      <div class="step">
-        <div class="step-num">1</div>
-        <div>Claude edits your code. Looper tracks every file touched and runs fast per-file checks (formatting, linting) after each edit.</div>
-      </div>
-      <div class="step">
-        <div class="step-num">2</div>
-        <div>Claude says "done." Looper runs your quality gates: typecheck, lint, test, coverage. Each gate is a shell command that exits 0 on pass.</div>
-      </div>
-      <div class="step">
-        <div class="step-num">3</div>
-        <div>Gates fail? Claude gets the failure output and automatically takes another pass. Gates pass? The loop ends. Clean code delivered.</div>
-      </div>
-    </div>
-  </section>
+    <script>
+      const observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        }
+      }, { threshold: 0.18 });
 
-  <!-- Zero Config -->
-  <h2>Detects your stack. Configures itself.</h2>
-  <section>
-    <p>On first session, Looper checks for marker files and picks the right preset. No JSON to write, no commands to look up.</p>
-
-    <div class="stack-grid">
-      <div class="stack-card">
-        <strong>TypeScript + ESLint</strong>
-        <div class="gates">tsc, eslint, prettier, jest</div>
-      </div>
-      <div class="stack-card">
-        <strong>TypeScript + Biome</strong>
-        <div class="gates">tsc, biome, vitest</div>
-      </div>
-      <div class="stack-card">
-        <strong>Deno</strong>
-        <div class="gates">deno check, lint, test, fmt</div>
-      </div>
-      <div class="stack-card">
-        <strong>Python</strong>
-        <div class="gates">mypy, ruff, pytest</div>
-      </div>
-      <div class="stack-card">
-        <strong>Go</strong>
-        <div class="gates">go build, vet, test, golangci-lint</div>
-      </div>
-      <div class="stack-card">
-        <strong>Rust</strong>
-        <div class="gates">cargo check, clippy, test, fmt</div>
-      </div>
-    </div>
-
-    <p class="muted small">Need something custom? Edit <code>.claude/looper.json</code> or run <code>/looper:looper-config</code> for a guided setup.</p>
-  </section>
-
-  <!-- The loop in action -->
-  <h2>What Claude sees</h2>
-  <section>
-    <p>When gates fail, Claude gets precise feedback. No guessing. No "something went wrong."</p>
-
-<pre class="gate-output"><code><span class="dim">QUALITY GATES -- PASS 2/10</span>
-<span class="dim">Score: 80/100  History: [50, 80]</span>
-<span class="dim">-------------------------------------------</span>
-<span class="pass"> v typecheck   30/30</span>
-<span class="pass"> v lint         20/20</span>
-<span class="fail"> x test          0/30   FAILED</span>
-<span class="skip"> o coverage      -/20   skipped</span>
-<span class="dim">-------------------------------------------</span>
-<span class="dim">-- test --</span>
-<span class="fail">FAIL src/user.test.ts</span>
-<span class="fail">  x should validate email format</span>
-<span class="fail">    Expected: true</span>
-<span class="fail">    Received: false</span>
-<span class="dim">-------------------------------------------</span>
-<span class="dim">FIX THE SPECIFIC FAILURES. 8 passes remaining.</span></code></pre>
-
-    <p>Claude reads the output, fixes the test, and the loop continues. Iteration 3 scores 100/100. Done.</p>
-  </section>
-
-  <!-- Extensible -->
-  <h2>Build your own packages</h2>
-  <section>
-    <p>Quality gates are just the default package. The kernel dispatches to any package you write. TDD cycles, security audits, documentation checks -- three files and a JSON manifest.</p>
-
-<pre class="pkg-tree"><code><span class="highlight">packages/my-package/</span>
-  package.json            <span class="dim"># name, phase, tool matchers</span>
-  hooks/
-    session-start.sh      <span class="dim"># inject context at session start</span>
-    stop.sh               <span class="dim"># evaluate, exit 0 (done) or 2 (continue)</span></code></pre>
-
-    <p>Multiple packages compose. Core-phase packages run first. Post-phase packages only run after core is satisfied. The kernel aggregates votes -- any package can keep the loop going.</p>
-  </section>
-
-  <!-- Architecture -->
-  <h2>Under the hood</h2>
-  <section>
-    <p>A ~500-line bash kernel dispatches four Claude Code hooks to pluggable packages. No npm dependencies. No build step. Just shell scripts and <code>jq</code>.</p>
-
-<pre><code><span class="dim">SessionStart</span>  init state, inject gate list into Claude's context
-<span class="dim">PreToolUse</span>    track files, inject pass counter, enforce budget
-<span class="dim">PostToolUse</span>   run per-file checks (format, lint) after each edit
-<span class="dim">Stop</span>          evaluate gates, score, vote continue/done</code></pre>
-
-    <p>Circuit breakers prevent infinite loops: a re-entry guard, an iteration budget (default 10), and a two-phase stop model that skips secondary checks when primary gates fail.</p>
-  </section>
-
-  <!-- Configuration -->
-  <h2>Configure what matters</h2>
-  <section>
-    <p>Everything lives in <code>.claude/looper.json</code>. Per-project. Version-controlled. Human-readable.</p>
-
-<pre><code>{
-  "max_iterations": 10,
-  "packages": ["quality-gates"],
-  "quality-gates": {
-    "gates": [
-      { "name": "typecheck", "command": "npx tsc --noEmit", "weight": 30 },
-      { "name": "lint",      "command": "npx eslint .",     "weight": 20 },
-      { "name": "test",      "command": "npm test",         "weight": 30 }
-    ],
-    "context": [
-      "This project uses React 19 with Server Components.",
-      "Never modify the public API contract in docs/api.md."
-    ]
-  }
-}</code></pre>
-
-    <p class="muted small">Gates support <code>skip_if_missing</code>, <code>run_when</code> file patterns, per-gate timeouts, optional vs required flags, and custom coaching messages.</p>
-  </section>
-
-  <!-- Final CTA -->
-  <section class="final-cta">
-    <div class="install-block">
-      <div class="label">Get working code. Stop doing Claude's QA.</div>
-      <pre><code>claude plugin install looper@claude-plugins-official</code></pre>
-    </div>
-    <p><a href="https://github.com/srdjan/looper">GitHub</a> &middot; <a href="https://github.com/srdjan/looper/blob/main/docs/user-guide.md">Docs</a> &middot; MIT License</p>
-  </section>
-
-</main>
-
-<footer>
-  Built by <a href="https://github.com/srdjan">Srdjan Strbanovic</a>. Looper is open source under the MIT License.
-</footer>
-
-</body>
+      document.querySelectorAll(".reveal:not(.is-visible)").forEach((node) =>
+        observer.observe(node)
+      );
+    </script>
+  </body>
 </html>
