@@ -65,6 +65,8 @@
           --so-charming: #ec7a93;
           --ink: #123244;
           --ink-soft: rgba(2, 39, 58, 0.72);
+          --surface: rgba(255, 245, 238, 0.72);
+          --surface-border: rgba(2, 39, 58, 0.1);
           --line: rgba(2, 39, 58, 0.14);
           --shadow: 0 28px 80px rgba(2, 39, 58, 0.16);
           --font-display:
@@ -93,16 +95,20 @@
         html {
           background:
             radial-gradient(
-              circle at 12% 12%,
-              rgba(255, 245, 238, 0.96),
-              transparent 30%
+              circle at 14% 10%,
+              rgba(195, 220, 213, 0.58),
+              transparent 28%
             ),
+            radial-gradient(
+            circle at 92% 18%,
+            rgba(236, 122, 147, 0.08),
+            transparent 22%
+          ),
             linear-gradient(
-            135deg,
-            var(--green-wave) 0%,
-            var(--seashell) 38%,
-            var(--apricot-glow) 69%,
-            var(--so-charming) 100%
+            180deg,
+            #fdf8f3 0%,
+            var(--seashell) 52%,
+            #f8f1ea 100%
           );
           color: var(--ink);
           scroll-behavior: smooth;
@@ -129,6 +135,13 @@
 
         code, pre {
           font-family: var(--font-mono);
+        }
+
+        code {
+          font-size: 0.78rem;
+          white-space: normal;
+          word-break: break-word;
+          overflow-wrap: anywhere;
         }
 
         ::selection {
@@ -274,7 +287,7 @@
         .top-links a:last-child {
           padding: 0.78rem 1rem;
           border-radius: 999px;
-          background: rgba(2, 39, 58, 0.07);
+          background: rgba(2, 39, 58, 0.05);
           backdrop-filter: blur(12px);
         }
 
@@ -351,7 +364,7 @@
 
         .button.secondary {
           border: 1px solid rgba(2, 39, 58, 0.16);
-          background: rgba(255, 245, 238, 0.4);
+          background: rgba(255, 245, 238, 0.56);
           color: var(--murky-depths);
         }
 
@@ -384,8 +397,8 @@
           box-shadow: var(--shadow);
           background: linear-gradient(
             145deg,
-            rgba(255, 245, 238, 0.55),
-            rgba(195, 220, 213, 0.32)
+            rgba(255, 245, 238, 0.72),
+            rgba(195, 220, 213, 0.26)
           );
         }
 
@@ -401,7 +414,7 @@
 
         .plane-wave {
           inset: 0 0 52% 48%;
-          background: rgba(195, 220, 213, 0.82);
+          background: rgba(195, 220, 213, 0.64);
         }
 
         .plane-depths {
@@ -418,8 +431,8 @@
           inset: 52% 40% 0 0;
           background: linear-gradient(
             180deg,
-            rgba(255, 206, 121, 0.88),
-            rgba(255, 206, 121, 0.68)
+            rgba(255, 206, 121, 0.42),
+            rgba(255, 206, 121, 0.2)
           );
         }
 
@@ -427,8 +440,8 @@
           inset: 58% 0 0 34%;
           background: linear-gradient(
             180deg,
-            rgba(236, 122, 147, 0.9),
-            rgba(236, 122, 147, 0.72)
+            rgba(236, 122, 147, 0.34),
+            rgba(236, 122, 147, 0.16)
           );
         }
 
@@ -436,8 +449,8 @@
           inset: 33% 18% 18% 35%;
           background: linear-gradient(
             135deg,
-            rgba(17, 99, 86, 0.86),
-            rgba(17, 99, 86, 0.68)
+            rgba(17, 99, 86, 0.84),
+            rgba(17, 99, 86, 0.62)
           );
           clip-path: polygon(0 0, 58% 0, 100% 38%, 100% 100%, 0 100%);
         }
@@ -490,9 +503,10 @@
 
         .terminal-code {
           margin-top: 0.9rem;
-          font-size: 0.88rem;
+          font-size: 0.76rem;
           line-height: 1.6;
-          white-space: pre-wrap;
+          white-space: pre;
+          overflow-x: auto;
         }
 
         .terminal-pass {
@@ -527,13 +541,13 @@
           background:
             linear-gradient(
               180deg,
-              rgba(255, 245, 238, 0.18),
-              rgba(255, 245, 238, 0.55)
+              rgba(255, 245, 238, 0.24),
+              rgba(255, 245, 238, 0.42)
             ),
             linear-gradient(
             90deg,
             rgba(255, 255, 255, 0),
-            rgba(255, 245, 238, 0.2)
+            rgba(195, 220, 213, 0.12)
           );
         }
 
@@ -576,13 +590,13 @@
         }
 
         .workflow-step:nth-child(1) {
-          background: rgba(255, 245, 238, 0.72);
+          background: var(--surface);
         }
         .workflow-step:nth-child(2) {
-          background: rgba(195, 220, 213, 0.78);
+          background: rgba(195, 220, 213, 0.62);
         }
         .workflow-step:nth-child(3) {
-          background: rgba(255, 206, 121, 0.58);
+          background: rgba(255, 245, 238, 0.76);
         }
 
         .workflow-step strong {
@@ -609,8 +623,8 @@
           position: relative;
           padding: clamp(1.4rem, 2vw, 2rem);
           border-radius: 1.8rem;
-          background: rgba(255, 245, 238, 0.5);
-          box-shadow: inset 0 0 0 1px rgba(2, 39, 58, 0.08);
+          background: var(--surface);
+          box-shadow: inset 0 0 0 1px var(--surface-border);
         }
 
         .surface.dark {
@@ -644,7 +658,7 @@
           justify-content: space-between;
           gap: 1rem;
           padding-bottom: 0.7rem;
-          border-bottom: 1px solid rgba(2, 39, 58, 0.1);
+          border-bottom: 1px solid var(--surface-border);
         }
 
         .surface.dark .stack-list li,
@@ -671,9 +685,9 @@
           margin-top: 1.4rem;
           padding: 1.2rem 1.15rem;
           border-radius: 1.2rem;
-          font-size: 0.88rem;
+          font-size: 0.78rem;
           line-height: 1.65;
-          white-space: pre-wrap;
+          white-space: pre;
           overflow-x: auto;
         }
 
@@ -706,8 +720,8 @@
           background: linear-gradient(
             135deg,
             rgba(255, 245, 238, 0.96),
-            rgba(255, 206, 121, 0.75) 36%,
-            rgba(236, 122, 147, 0.7) 100%
+            rgba(195, 220, 213, 0.72) 52%,
+            rgba(255, 245, 238, 0.94) 100%
           );
           box-shadow: var(--shadow);
         }
@@ -723,11 +737,15 @@
           display: inline-block;
           width: fit-content;
           max-width: 100%;
-          padding: 0.95rem 1rem;
+          padding: 0.82rem 0.92rem;
           border-radius: 1rem;
           background: rgba(2, 39, 58, 0.92);
           color: var(--seashell);
           overflow-x: auto;
+          white-space: nowrap;
+          word-break: normal;
+          overflow-wrap: normal;
+          font-size: 0.76rem;
         }
 
         .cta-links {
@@ -1137,7 +1155,9 @@
         <div class="footer-inner">
           <span>Built by <a href="https://github.com/srdjan"
             >Srdjan Strbanovic</a>. Open source under MIT.</span>
-          <span>Looper makes Claude finish what it starts.</span>
+          <span>Palette by <a href="https://x.com/AlexCristache"
+            >AlexCristache</a>. Looper makes Claude finish what it
+            starts.</span>
         </div>
       </footer>
     </div>
