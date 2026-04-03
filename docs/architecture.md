@@ -2,298 +2,295 @@
 
 ## System Overview
 
-The project implements an in-session improvement loop around Claude Code hooks. The key mechanism is the Stop hook in `.claude/hooks/stop-improve.sh`:
+Looper is a package-based improvement loop for Claude Code. It consists of two layers:
 
-- if the hook exits `0`, Claude is allowed to stop
-- if the hook exits `2`, Claude receives feedback and gets another turn in the same session
+1. **Kernel**: a minimal dispatcher (`kernel.sh` + `pkg-utils.sh`) that manages loop state, circuit breakers, and hook dispatch. It knows nothing about quality gates or specific behaviors.
 
-That design keeps all work inside one Claude session rather than rebuilding state in an external supervisor.
+2. **Packages**: directories containing handler scripts that define what happens at each hook event. The bundled `quality-gates` package implements gate evaluation, scoring, per-file checks, and coaching.
 
-The installed hook wiring is defined in `.claude/settings.json`:
-
-- `SessionStart` for `new`
-- `PreToolUse` for `Edit|MultiEdit|Write`
-- `PostToolUse` for `Edit|MultiEdit|Write`
-- `Stop`
+The kernel is registered via the plugin's `hooks/hooks.json`. It receives hook events from Claude Code and dispatches to active package handlers.
 
 ## Hook Execution Flow
 
 ```mermaid
 ---
-title: Agentic Improvement Loop — Hook Flow
+title: Looper v2 - Kernel + Package Dispatch
 ---
 flowchart TD
-    START["SessionStart Hook"] -->|"init state.json\ninject context to Claude"| PROMPT["You: implement feature X"]
+    START["SessionStart"] -->|"kernel: init state\ndispatch to packages"| PROMPT["You: implement feature X"]
 
     PROMPT --> CLAUDE["Claude reasons + plans"]
 
-    CLAUDE --> PRE{"PreToolUse\n(Edit|Write)"}
+    CLAUDE --> PRE{"PreToolUse\n(kernel)"}
 
-    PRE -->|"iteration >= 10"| BLOCK["exit 2: BLOCKED\n'budget exhausted'"]
-    PRE -->|"iteration < 10"| ALLOW["exit 0: ALLOW\n+ inject pass N/10"]
+    PRE -->|"budget exhausted"| BLOCK["exit 2: BLOCKED"]
+    PRE -->|"budget OK"| DISPATCH_PRE["dispatch to packages\n(matcher filtering)"]
+    DISPATCH_PRE --> TOOL["Tool executes"]
 
-    ALLOW --> TOOL["Tool executes\n(file written/edited)"]
+    TOOL --> POST["PostToolUse\n(kernel dispatches)"]
+    POST -->|"package feedback\nstdout -> Claude"| CLAUDE2["Claude continues"]
 
-    TOOL --> POST["PostToolUse Hook"]
-    POST -->|"format + lint\nstdout → Claude"| CLAUDE2["Claude continues\n(self-corrects if issues)"]
+    CLAUDE2 -->|"more edits"| PRE
+    CLAUDE2 -->|"Claude says done"| STOP{"Stop\n(kernel)"}
 
-    CLAUDE2 -->|"more edits needed"| PRE
-    CLAUDE2 -->|"Claude says 'done'"| STOP{"Stop Hook"}
+    STOP -->|"stop_hook_active"| DONE_BREAKER["exit 0: breaker"]
+    STOP -->|"iteration >= max"| DONE_BUDGET["exit 0: budget"]
+    STOP -->|"dispatch to\ncore packages"| CORE{"core phase"}
 
-    STOP -->|"stop_hook_active\n== true"| DONE_BREAKER["exit 0: STOP\n(circuit breaker)"]
-    STOP -->|"iteration >= 10"| DONE_BUDGET["exit 0: STOP\n(budget exhausted)\nprint score history"]
-    STOP -->|"all required\ngates pass"| DONE_PERFECT["exit 0: STOP\n(required gates pass!)"]
-    STOP -->|"required gate\nfailed"| LOOP["exit 2: CONTINUE\nincrement iteration\nfeedback → stderr"]
+    CORE -->|"any core exit 2"| LOOP["exit 2: CONTINUE\nincrement iteration"]
+    CORE -->|"all core exit 0"| POST_PHASE{"post phase"}
 
-    LOOP -->|"Claude gets\nanother turn"| CLAUDE
+    POST_PHASE -->|"any post exit 2"| LOOP
+    POST_PHASE -->|"all post exit 0"| DONE["exit 0: complete"]
+
+    LOOP -->|"feedback -> stderr"| CLAUDE
 
     style START fill:#4a9eff,color:#fff
     style DONE_BREAKER fill:#ff6b6b,color:#fff
     style DONE_BUDGET fill:#ffa94d,color:#fff
-    style DONE_PERFECT fill:#51cf66,color:#fff
+    style DONE fill:#51cf66,color:#fff
     style LOOP fill:#845ef7,color:#fff
     style BLOCK fill:#ff6b6b,color:#fff
 ```
 
-### 1. SessionStart
+## Kernel
 
-`.claude/hooks/session-start.sh` sources `state-utils.sh`, calls `init_state`, reads gate config from `.claude/looper.json`, and prints startup context to `stdout`.
+### Entry Point
 
-The context includes:
+A single script: `kernel/kernel.sh <event>`. The event name is the first argument: `SessionStart`, `PreToolUse`, `PostToolUse`, or `Stop`.
 
-- loop rules and the configured gate list with weights and required/optional labels
-- custom context lines from the `context` array in `looper.json` (if configured)
-- project discovery output from the `discover` commands in `looper.json`, or the default discovery (git branch, node version, package scripts, test files) if `discover` is not configured
+### Plugin Hook Wiring
 
-stdout from this hook becomes Claude's context for the session.
-
-### 2. PreToolUse
-
-`.claude/hooks/pre-edit-guard.sh` runs before `Edit`, `MultiEdit`, and `Write`.
-
-It does three things:
-
-- reads the current `iteration` from state
-- blocks edits when `is_budget_exhausted` is true
-- returns JSON with `hookSpecificOutput.additionalContext`
-
-Concrete output shape:
+Hook registration is defined in `hooks/hooks.json` using the `${CLAUDE_PLUGIN_ROOT}` variable:
 
 ```json
 {
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "allow",
-    "additionalContext": "Improvement pass 2/10. Editing: src/foo.ts"
+  "hooks": {
+    "SessionStart": [{ "matcher": "new", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/kernel/kernel.sh\" SessionStart" }] }],
+    "PreToolUse":   [{ "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/kernel/kernel.sh\" PreToolUse" }] }],
+    "PostToolUse":  [{ "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/kernel/kernel.sh\" PostToolUse" }] }],
+    "Stop":         [{ "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/kernel/kernel.sh\" Stop", "timeout": 600 }] }]
   }
 }
 ```
 
-This hook also appends the edited file path to `files_touched` if it has not been seen before.
+PreToolUse and PostToolUse register with no matcher (receives all tool events). The kernel filters internally using each package's `matchers` field.
 
-### 3. PostToolUse
+### Kernel Responsibilities
 
-`.claude/hooks/post-edit-check.sh` runs after `Edit`, `MultiEdit`, and `Write`.
+- **State lifecycle**: iteration counter, budget enforcement, status tracking
+- **Circuit breakers**: `stop_hook_active` re-entry guard, iteration budget cap
+- **Hook dispatch**: resolve packages, call handlers in order, aggregate results
+- **Package loading**: read `packages` array from `looper.json`, resolve directories
+- **Shared state**: `files_touched` array, maintained in kernel.json
 
-Checks are configured via the `checks` array in `.claude/looper.json`. Each check specifies a `command`, a file `pattern` for matching, and an optional `fix` command. The `{file}` placeholder in commands is replaced with the edited file path at runtime.
+### What the Kernel Does NOT Own
 
-If no `checks` config exists, the hook falls back to hardcoded TypeScript checks (prettier, eslint, tsc). This fallback will be removed in a future version.
-
-The hook writes human-readable results to `stdout`, so the next Claude turn gets immediate local feedback such as:
-
-- `ok src/foo.ts: all checks clean`
-- a short list of lint or type errors
-
-### 4. Stop
-
-`.claude/hooks/stop-improve.sh` is the control loop.
-
-Execution order:
-
-1. read hook input JSON from `stdin`
-2. check `stop_hook_active`
-3. check iteration budget
-4. load gate config from `.claude/looper.json` (filtering out disabled gates)
-5. run each gate command with timeout, pass if exit 0; skip gates whose `run_when` patterns don't match `files_touched` or whose `skip_if_missing` file is absent
-6. record score and per-gate pass/fail
-7. stop when all required gates pass, or continue if any required gate failed
-
-Unlike `PostToolUse`, this hook writes its feedback to `stderr`, which is the channel used for retry-driving feedback at the end of a response.
+Scoring, gate evaluation, coaching messages, context injection content, post-edit checks, discovery commands. All domain logic lives in packages.
 
 ## State Management
 
-Shared state lives in `.claude/hooks/state-utils.sh`.
+### Layout
 
-### Location
+```
+.claude/state/
+  kernel.json                 # kernel-owned: iteration, status, files_touched
+  quality-gates/
+    state.json                # package-owned: scores, checks, gate results
+  security-audit/
+    state.json                # package-owned: findings, scan results
+```
 
-- `STATE_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/state"`
-- `STATE_FILE="$STATE_DIR/loop-state.json"`
-
-Using `CLAUDE_PROJECT_DIR` keeps the hook scripts relocatable after installation into another repository.
-
-### Initial structure
-
-`init_state` writes this JSON:
+### Kernel State
 
 ```json
 {
   "iteration": 0,
   "max_iterations": 10,
-  "scores": [],
-  "checks": {},
   "status": "running",
   "files_touched": []
 }
 ```
 
-`checks` is populated dynamically after each Stop pass, with one key per configured gate name set to `true` or `false`.
+Status values: `running`, `complete`, `budget_exhausted`, `breaker_tripped`.
 
-### Lifecycle
+### Package State
 
-Session start:
+Each package owns its state directory and file entirely. Packages read/write via `pkg_state_read` and `pkg_state_write` from `pkg-utils.sh`. Packages can read other packages' state (read-only) via `pkg_read`.
 
-- `init_state` overwrites any previous loop state with a fresh file
+## Package Format
 
-During edits:
+A package is a directory with a `package.json` manifest and optional handler scripts.
 
-- `PreToolUse` appends unique file paths into `files_touched`
+### Directory Structure
 
-During Stop evaluation:
+```
+packages/<name>/
+  package.json          # manifest (required)
+  hooks/
+    session-start.sh    # SessionStart handler (optional)
+    pre-tool-use.sh     # PreToolUse handler (optional)
+    post-tool-use.sh    # PostToolUse handler (optional)
+    stop.sh             # Stop handler (optional)
+  lib/                  # helper scripts (optional)
+  skills/               # SKILL.md files (optional)
+  defaults.json         # default config (optional)
+```
 
-- `append_state '.scores' "$SCORE"` records each pass score
-- `write_state '.checks' ...` records per-gate pass/fail for the current pass
-- `increment_iteration` advances the pass counter after imperfect runs
-- `write_state '.status' ...` records terminal states
+Convention over configuration: if a handler file exists, the kernel calls it. No registration needed.
 
-Observed status values:
+### Manifest
 
-- `running`
-- `complete`
-- `budget_exhausted`
-- `breaker_tripped`
+```json
+{
+  "name": "quality-gates",
+  "version": "2.0.0",
+  "description": "Quality gate loop",
+  "matchers": {
+    "PreToolUse": "Edit|MultiEdit|Write",
+    "PostToolUse": "Edit|MultiEdit|Write"
+  },
+  "phase": "core",
+  "skills": ["skills/looper-config"]
+}
+```
 
-`max_iterations` is read from `.claude/looper.json` at startup; both initialization and runtime budget checks use the same `MAX_ITERATIONS` shell variable.
+- `matchers`: regex patterns for PreToolUse/PostToolUse tool name filtering. Absent means "all tools".
+- `phase`: `"core"` (default) or `"post"`. Controls when the package's stop handler is evaluated.
+- `skills`: relative paths to skill directories to install.
 
-## Gate Config
+### Handler Protocol
 
-Gates are defined in `.claude/looper.json`:
+Handlers receive hook input JSON on stdin and environment variables set by the kernel.
+
+| Hook | stdout | stderr | exit 0 | exit 2 |
+|------|--------|--------|--------|--------|
+| SessionStart | Context injected into Claude | Ignored | Normal | N/A |
+| PreToolUse | JSON with additionalContext | Warning messages | Allow tool | Block tool |
+| PostToolUse | Feedback to Claude | Ignored | Normal | N/A |
+| Stop | Ignored | Feedback to Claude | Vote "done" | Vote "continue" |
+
+## Stop Condition Protocol
+
+### Two-Phase Model
+
+Packages declare a phase in their manifest:
+
+- **core** (default): runs every stop evaluation
+- **post**: runs only after ALL core packages are satisfied
+
+### Aggregation Algorithm
+
+1. Check circuit breakers (kernel-level)
+2. Run all core-phase stop handlers
+3. If any core handler exits 2: kernel exits 2, post handlers are skipped
+4. If all core handlers exit 0: run all post-phase stop handlers
+5. If any post handler exits 2: kernel exits 2
+6. If all handlers exit 0: kernel exits 0, loop complete
+
+Packages without a `hooks/stop.sh` are implicitly satisfied and never block the loop.
+
+### Output Aggregation
+
+When multiple packages provide stderr feedback, the kernel adds package-name headers:
+
+```
+-- [quality-gates] --
+  x typecheck: failed (0/30)
+  v test: pass (70/70)
+
+-- [security-audit] --
+  Found 2 high-severity vulnerabilities
+```
+
+## Package Discovery
+
+Search path (first match wins per package name):
+
+1. `$CLAUDE_PROJECT_DIR/.claude/packages/<name>/` - project-local override
+2. `$HOME/.claude/packages/<name>/` - user-global
+3. `$CLAUDE_PLUGIN_ROOT/packages/<name>/` - bundled with the plugin
+
+A project can override a bundled package by creating a same-named directory in `.claude/packages/`.
+
+## Configuration
+
+### looper.json Format
 
 ```json
 {
   "max_iterations": 10,
-  "gates": [
-    { "name": "typecheck", "command": "npx tsc --noEmit --pretty false", "weight": 30, "skip_if_missing": "tsconfig.json" },
-    { "name": "lint",      "command": "npx eslint .",                     "weight": 20, "skip_if_missing": "node_modules/.bin/eslint" },
-    { "name": "test",      "command": "npm test",                        "weight": 30 },
-    { "name": "coverage",  "command": "$LOOPER_HOOKS_DIR/check-coverage.sh", "weight": 20, "required": false }
-  ]
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "gates": [...],
+    "checks": [...]
+  }
 }
 ```
 
-Each gate runs its `command` and passes if the command exits `0`. The loop completes when all required gates pass.
+Top-level `max_iterations` and `packages` are kernel config. Everything under a package name key is that package's config, passed through by the kernel.
 
-Gate fields:
+### Multi-Package Configuration
 
-- `name`, `command`, `weight`: required. The gate passes if the command exits 0, and its weight is added to the score.
-- `skip_if_missing`: file or binary path. If absent, the gate is skipped with full points (gate not applicable).
-- `required` (default `true`): if `false`, the gate is scored but does not block completion. Optional gate failures are reported but the loop exits 0.
-- `run_when`: array of glob patterns matched against `files_touched` in state. If present and no touched file matches, the gate is skipped with full points.
-- `timeout` (default 300): seconds before the gate command is killed. Timeout is treated as failure.
-- `enabled` (default `true`): set to `false` to exclude the gate entirely without removing it from config.
+```json
+{
+  "max_iterations": 15,
+  "packages": ["quality-gates", "security-audit"],
+  "quality-gates": { "gates": [...] },
+  "security-audit": { "scan_command": "npm audit --json", "severity_threshold": "high" }
+}
+```
 
-`$LOOPER_HOOKS_DIR` is exported by the Stop hook before running gates and resolves to the hooks directory, so gate commands can reference helper scripts shipped alongside the hooks.
-
-### Default coverage gate
-
-`.claude/hooks/check-coverage.sh` reads `coverage/coverage-summary.json` (Jest/nyc format) and exits non-zero if line coverage is below 80%. Replace the command in the gate config with any tool that exits `0` when coverage is acceptable.
-
-### Scoring
-
-The total possible score is the sum of all enabled gate weights. A gate either passes (full weight) or fails (zero). The loop completes when all required gates pass, regardless of optional gate scores. Optional gate failures are reported on completion but do not trigger additional iterations.
+Package order in the array determines execution order within the same phase.
 
 ## Circuit Breakers
 
-The loop has three separate stop conditions.
+### stop_hook_active
 
-### `stop_hook_active`
+Prevents infinite re-entry. If Claude was pushed back by the Stop hook and tries to stop again on the same turn, the kernel exits 0 immediately. Status: `breaker_tripped`.
 
-The Stop hook reads `.stop_hook_active` from its input JSON.
+### Iteration Budget
 
-If this value is `true`:
+Hard cap at `max_iterations`. The kernel checks this both in the Stop dispatcher (exits 0 with summary) and in PreToolUse (blocks edits, exits 2). Status: `budget_exhausted`.
 
-- state is updated to `breaker_tripped`
-- the hook exits `0`
+### All Packages Satisfied
 
-This prevents infinite re-entry if Claude is already being pushed back by the Stop hook on the same turn.
-
-### Iteration budget
-
-The budget is read from `max_iterations` in `.claude/looper.json` at startup. The hooks fall back to `10` if the field is absent.
-
-Enforcement points:
-
-- `PreToolUse` blocks further edits when the budget is exhausted and exits `2`
-- `Stop` exits `0` with a final budget summary when `iteration >= MAX_ITERATIONS`
-
-### All required gates pass
-
-When all required gates pass, the Stop hook:
-
-- writes `status = "complete"`
-- prints a completion summary with score history
-- reports any optional gate failures as non-blocking
-- exits `0`
-
-## Feedback Channels
-
-The loop uses different output channels for different kinds of feedback.
-
-### `stdout`
-
-Used by `SessionStart` and `PostToolUse` for context seeding and fast edit-local feedback.
-
-### `stderr`
-
-Used by `PreToolUse` when blocking edits and by `Stop` for pass summaries, failures, urgency coaching, and terminal summaries.
-
-### `additionalContext`
-
-Used by `PreToolUse` to inject a lightweight pass/file reminder into Claude's context without relying on error output.
+When all packages' stop handlers exit 0 (across both phases), the kernel exits 0. Status: `complete`.
 
 ## Exit Code Semantics
 
-- `0`: allow the session to stop or the tool action to proceed
-- `2`: continue the loop or block the current action with feedback
+- `0`: allow (stop the loop, permit the tool action, continue normally)
+- `2`: continue (push Claude back into the loop, block the tool action)
 
-Concrete usage:
+## Plugin Layout
 
-- `Stop` exits `0` for breaker, perfect completion, or budget exhaustion
-- `Stop` exits `2` after an imperfect pass so Claude gets another turn
-- `PreToolUse` exits `2` when the edit budget is exhausted
-- `SessionStart` and `PostToolUse` normally exit `0`
+```
+looper/                              # plugin root
+  .claude-plugin/
+    plugin.json                      # plugin manifest
+  hooks/
+    hooks.json                       # hook registrations
+  skills/
+    looper-config/                   # /looper:looper-config skill
+  commands/
+    bootstrap.md                     # /looper:bootstrap command
+  kernel/
+    kernel.sh                        # kernel dispatcher
+    pkg-utils.sh                     # state/config helpers
+  packages/
+    quality-gates/                   # bundled package
+```
 
-## Extension Points
+## Project Runtime Layout
 
-### Change gate commands, weights, or behavior
+After the kernel's first-run bootstrap:
 
-Edit `.claude/looper.json`. No hook scripts need to change. Replace commands with whatever your stack uses. Mark gates as `required: false` for non-blocking checks, add `run_when` patterns for conditional execution, or set `timeout` for slow commands.
-
-### Configure post-edit checks for any language
-
-Add a `checks` array to `looper.json` with commands that match your file types. Use `{file}` as a placeholder for the edited file path. Add a `fix` command for auto-formatting. The checks are language-agnostic: use any command that exits `0` on success.
-
-### Customize session context
-
-Add a `context` array to `looper.json` with strings injected into Claude's session context. Use `discover` for custom project discovery commands. Use `coaching` to customize urgency messaging and failure headers.
-
-### Add a coverage helper
-
-`.claude/hooks/check-coverage.sh` is the default coverage gate. Replace its command in `looper.json` with any script or tool that exits non-zero when coverage is below your threshold. `$LOOPER_HOOKS_DIR` resolves to the hooks directory at runtime.
-
-### Add fields to state
-
-Edit `.claude/hooks/state-utils.sh` to add new fields to `loop-state.json` or change terminal status values.
-
-### Rewire hook matchers
-
-Edit `.claude/settings.json` to change tool matchers, add commands on the same hook event, or narrow the trigger surface.
+```
+your-project/
+  .claude/
+    looper.json                      # project config (created by ensure_config)
+    state/
+      kernel.json                    # kernel state
+      quality-gates/
+        state.json                   # package state
+```

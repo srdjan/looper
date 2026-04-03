@@ -9,7 +9,7 @@ Generate a `.claude/looper.json` configuration by detecting the project's tech s
 
 ## When to Use
 
-- User invokes `/looper-config`
+- User invokes `/looper:looper-config`
 - User asks to "configure looper", "set up quality gates", or "create looper config"
 - User wants to customize an existing `looper.json`
 
@@ -113,7 +113,7 @@ These are advanced options users can edit manually later.
 4. On confirmation:
    - Write the file using the Write tool
    - Validate with: `jq empty .claude/looper.json`
-   - If `.claude/hooks/stop-improve.sh` does not exist, suggest running the Looper installer
+   - If the looper plugin is not enabled, suggest running `/plugin install looper`
 
 ## Rules
 

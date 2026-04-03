@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "new",
+        "hooks": [{
+          "type": "command",
+          "command": "bash \"${CLAUDE_PLUGIN_ROOT}/kernel/kernel.sh\" SessionStart",
+          "timeout": 30
+        }]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "bash \"${CLAUDE_PLUGIN_ROOT}/kernel/kernel.sh\" PreToolUse",
+          "timeout": 10
+        }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "bash \"${CLAUDE_PLUGIN_ROOT}/kernel/kernel.sh\" PostToolUse",
+          "timeout": 30
+        }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "bash \"${CLAUDE_PLUGIN_ROOT}/kernel/kernel.sh\" Stop",
+          "timeout": 600
+        }]
+      }
+    ]
+  }
+}

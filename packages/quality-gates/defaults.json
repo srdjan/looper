@@ -1,5 +1,4 @@
 {
-  "max_iterations": 10,
   "gates": [
     {
       "name": "typecheck",
@@ -20,7 +19,7 @@
     },
     {
       "name": "coverage",
-      "command": "$LOOPER_HOOKS_DIR/check-coverage.sh",
+      "command": "$LOOPER_PKG_DIR/lib/check-coverage.sh",
       "weight": 20,
       "required": false
     }

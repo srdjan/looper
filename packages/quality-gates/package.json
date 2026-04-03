@@ -1,0 +1,10 @@
+{
+  "name": "quality-gates",
+  "version": "2.0.0",
+  "description": "Quality gate loop - typecheck, lint, test, coverage",
+  "matchers": {
+    "PreToolUse": "Edit|MultiEdit|Write",
+    "PostToolUse": "Edit|MultiEdit|Write"
+  },
+  "phase": "core"
+}
