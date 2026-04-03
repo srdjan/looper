@@ -43,6 +43,20 @@ _kernel_update() {
 kernel_write() { _kernel_update "$1 = $2"; }
 kernel_append() { _kernel_update "$1 += [$2]"; }
 
+# ── Stack detection ─────────────────────────────────────
+detect_stack() {
+  local d="${CLAUDE_PROJECT_DIR:-.}"
+  [ -f "$d/Cargo.toml" ]                                      && echo "rust"             && return 0
+  [ -f "$d/go.mod" ]                                          && echo "go"               && return 0
+  [ -f "$d/pyproject.toml" ] || [ -f "$d/requirements.txt" ]  && echo "python"           && return 0
+  [ -f "$d/deno.json" ] || [ -f "$d/deno.jsonc" ]             && echo "deno"             && return 0
+  if [ -f "$d/tsconfig.json" ]; then
+    [ -f "$d/biome.json" ] || [ -f "$d/biome.jsonc" ]         && echo "typescript-biome" && return 0
+    echo "typescript-eslint" && return 0
+  fi
+  echo "minimal"
+}
+
 # ── Package resolution ──────────────────────────────────
 resolve_package_dir() {
   local name="$1"
@@ -325,23 +339,21 @@ ensure_config() {
   mkdir -p "$STATE_DIR"
 
   if [ ! -f "$CONFIG" ]; then
-    local default_pkgs='["quality-gates"]'
+    local stack
+    stack=$(detect_stack)
+    local preset_file="$PLUGIN_ROOT/packages/quality-gates/presets/${stack}.json"
+    [ -f "$preset_file" ] || { preset_file="$PLUGIN_ROOT/packages/quality-gates/presets/minimal.json"; stack="minimal"; }
+
     local config
-    config=$(jq -n --argjson pkgs "$default_pkgs" '{
+    config=$(jq -n --argjson pkgs '["quality-gates"]' --slurpfile qg "$preset_file" '{
       max_iterations: 10,
-      packages: $pkgs
+      packages: $pkgs,
+      "quality-gates": $qg[0]
     }')
 
-    for pkg_name in $(echo "$default_pkgs" | jq -r '.[]'); do
-      local defaults="$PLUGIN_ROOT/packages/$pkg_name/defaults.json"
-      if [ -f "$defaults" ]; then
-        config=$(echo "$config" | jq --arg pkg "$pkg_name" --slurpfile defs "$defaults" '. + {($pkg): $defs[0]}')
-      fi
-    done
-
-    mkdir -p "$(dirname "$CONFIG")"
-    echo "$config" | jq '.' > "$CONFIG"
-    echo "Looper: created default config at $CONFIG" >&2
+    printf '%s\n' "$config" > "$CONFIG"
+    echo "Looper: detected $stack stack - config written to $CONFIG" >&2
+    echo "Looper: customize with /looper:looper-config" >&2
   fi
 
   # Ensure .claude/state/ is gitignored

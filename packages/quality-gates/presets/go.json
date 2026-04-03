@@ -1,0 +1,34 @@
+{
+  "gates": [
+    {
+      "name": "build",
+      "command": "go build ./...",
+      "weight": 30
+    },
+    {
+      "name": "vet",
+      "command": "go vet ./...",
+      "weight": 20
+    },
+    {
+      "name": "test",
+      "command": "go test ./...",
+      "weight": 30
+    },
+    {
+      "name": "lint",
+      "command": "golangci-lint run",
+      "weight": 20,
+      "skip_if_missing": ".golangci.yml",
+      "required": false
+    }
+  ],
+  "checks": [
+    {
+      "name": "format",
+      "command": "test -z \"$(gofmt -l {file})\"",
+      "fix": "gofmt -w {file}",
+      "pattern": "*.go"
+    }
+  ]
+}

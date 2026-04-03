@@ -13,7 +13,7 @@ The default and most common configuration.
   { "name": "typecheck", "command": "npx tsc --noEmit --pretty false", "weight": 30, "skip_if_missing": "tsconfig.json" },
   { "name": "lint",      "command": "npx eslint .",                     "weight": 20, "skip_if_missing": "node_modules/.bin/eslint" },
   { "name": "test",      "command": "npm test",                        "weight": 30 },
-  { "name": "coverage",  "command": "$LOOPER_HOOKS_DIR/check-coverage.sh", "weight": 20, "required": false }
+  { "name": "coverage",  "command": "$LOOPER_PKG_DIR/lib/check-coverage.sh", "weight": 20, "required": false }
 ]
 ```
 
@@ -38,7 +38,7 @@ Modern alternative using Biome for linting and formatting.
   { "name": "typecheck", "command": "npx tsc --noEmit --pretty false", "weight": 30, "skip_if_missing": "tsconfig.json" },
   { "name": "lint",      "command": "npx biome check .",               "weight": 20, "skip_if_missing": "node_modules/.bin/biome" },
   { "name": "test",      "command": "npx vitest run",                  "weight": 30, "skip_if_missing": "node_modules/.bin/vitest" },
-  { "name": "coverage",  "command": "$LOOPER_HOOKS_DIR/check-coverage.sh", "weight": 20, "required": false }
+  { "name": "coverage",  "command": "$LOOPER_PKG_DIR/lib/check-coverage.sh", "weight": 20, "required": false }
 ]
 ```
 

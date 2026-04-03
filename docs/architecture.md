@@ -89,7 +89,7 @@ PreToolUse and PostToolUse register with no matcher (receives all tool events). 
 On SessionStart, the kernel calls `ensure_config` before dispatching to packages. This function:
 
 1. Creates `.claude/state/` if missing
-2. Creates `.claude/looper.json` with defaults if missing (merges `defaults.json` from each bundled package)
+2. If `.claude/looper.json` is missing, detects the project's tech stack via `detect_stack()` and writes the matching preset config. Detection checks for marker files (`Cargo.toml`, `go.mod`, `pyproject.toml`, `deno.json`, `tsconfig.json`, etc.) in priority order and selects from preset configs in `packages/quality-gates/presets/`. Supported stacks: Rust, Go, Python, Deno, TypeScript+Biome, TypeScript+ESLint, and a minimal fallback.
 3. Appends `.claude/state/` to `.gitignore` if not already present
 
 After the first session, `ensure_config` is a no-op (the config file already exists).
@@ -143,7 +143,7 @@ packages/<name>/
     post-tool-use.sh    # PostToolUse handler (optional)
     stop.sh             # Stop handler (optional)
   lib/                  # helper scripts (optional)
-  defaults.json         # default config (optional)
+  presets/              # stack-specific default configs (optional)
 ```
 
 Convention over configuration: if a handler file exists, the kernel calls it. No registration needed.

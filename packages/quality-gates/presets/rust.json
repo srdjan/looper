@@ -1,0 +1,33 @@
+{
+  "gates": [
+    {
+      "name": "check",
+      "command": "cargo check",
+      "weight": 30
+    },
+    {
+      "name": "clippy",
+      "command": "cargo clippy -- -D warnings",
+      "weight": 20
+    },
+    {
+      "name": "test",
+      "command": "cargo test",
+      "weight": 30
+    },
+    {
+      "name": "fmt",
+      "command": "cargo fmt -- --check",
+      "weight": 20,
+      "required": false
+    }
+  ],
+  "checks": [
+    {
+      "name": "fmt",
+      "command": "cargo fmt -- --check",
+      "fix": "cargo fmt",
+      "pattern": "*.rs"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "gates": [
+    {
+      "name": "check",
+      "command": "deno check .",
+      "weight": 30
+    },
+    {
+      "name": "lint",
+      "command": "deno lint",
+      "weight": 20
+    },
+    {
+      "name": "test",
+      "command": "deno test",
+      "weight": 30
+    },
+    {
+      "name": "fmt",
+      "command": "deno fmt --check",
+      "weight": 20,
+      "required": false
+    }
+  ],
+  "checks": [
+    {
+      "name": "fmt",
+      "command": "deno fmt --check {file}",
+      "fix": "deno fmt {file}",
+      "pattern": "*.ts,*.tsx"
+    },
+    {
+      "name": "lint",
+      "command": "deno lint {file}",
+      "pattern": "*.ts,*.tsx"
+    },
+    {
+      "name": "check",
+      "command": "deno check {file}",
+      "pattern": "*.ts,*.tsx"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "gates": [
+    {
+      "name": "test",
+      "command": "npm test",
+      "weight": 100
+    }
+  ],
+  "checks": []
+}

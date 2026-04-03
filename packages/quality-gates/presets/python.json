@@ -1,0 +1,43 @@
+{
+  "gates": [
+    {
+      "name": "typecheck",
+      "command": "python -m mypy src/",
+      "weight": 30,
+      "skip_if_missing": "mypy.ini"
+    },
+    {
+      "name": "lint",
+      "command": "ruff check .",
+      "weight": 20,
+      "skip_if_missing": "ruff.toml"
+    },
+    {
+      "name": "test",
+      "command": "python -m pytest -q",
+      "weight": 30
+    },
+    {
+      "name": "format",
+      "command": "ruff format --check .",
+      "weight": 20,
+      "skip_if_missing": "ruff.toml",
+      "required": false
+    }
+  ],
+  "checks": [
+    {
+      "name": "format",
+      "command": "ruff format --check {file}",
+      "fix": "ruff format {file}",
+      "pattern": "*.py",
+      "skip_if_missing": "ruff.toml"
+    },
+    {
+      "name": "lint",
+      "command": "ruff check {file}",
+      "pattern": "*.py",
+      "skip_if_missing": "ruff.toml"
+    }
+  ]
+}

@@ -29,13 +29,13 @@
       "name": "format",
       "command": "npx prettier --check {file}",
       "fix": "npx prettier --write {file}",
-      "pattern": "*.ts,*.tsx",
+      "pattern": "*.ts,*.tsx,*.js,*.jsx",
       "skip_if_missing": "node_modules/.bin/prettier"
     },
     {
       "name": "lint",
       "command": "npx eslint {file}",
-      "pattern": "*.ts,*.tsx",
+      "pattern": "*.ts,*.tsx,*.js,*.jsx",
       "skip_if_missing": "node_modules/.bin/eslint"
     },
     {

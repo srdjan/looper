@@ -30,7 +30,7 @@ claude --plugin-dir /path/to/looper
 
 You need `jq` installed. On macOS: `brew install jq`. On Debian/Ubuntu: `apt install jq`.
 
-Start Claude Code in any project and the plugin creates a default `.claude/looper.json` on the first session. That config ships with four gates: typecheck, lint, test, and coverage.
+Start Claude Code in any project and the plugin auto-detects your tech stack on the first session. It looks for marker files (Cargo.toml, go.mod, pyproject.toml, deno.json, tsconfig.json) and writes a `.claude/looper.json` with the matching preset: appropriate gates, checks, and tool commands for your stack. No configuration required for Rust, Go, Python, Deno, or TypeScript projects. Run `/looper:looper-config` to customize further.
 
 ---
 

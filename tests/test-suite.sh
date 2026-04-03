@@ -559,6 +559,9 @@ assert_true "bootstrap: has packages array" jq -e '.packages | length > 0' "$FIX
 assert_true "bootstrap: has quality-gates config" jq -e '.["quality-gates"]' "$FIXTURE_BOOT/.claude/looper.json"
 assert_true "bootstrap: state dir created" test -d "$FIXTURE_BOOT/.claude/state"
 assert_contains "bootstrap: .gitignore updated" ".claude/state/" "$(cat "$FIXTURE_BOOT/.gitignore")"
+# Bare fixture (no marker files) should detect minimal stack
+assert_contains "bootstrap: detects minimal stack" "detected minimal" "$(cat "$BOOT_STDERR")"
+assert_true "bootstrap: minimal has test gate" jq -e '.["quality-gates"].gates[] | select(.name == "test")' "$FIXTURE_BOOT/.claude/looper.json"
 
 # Second run should not recreate config
 FIRST_CONFIG=$(cat "$FIXTURE_BOOT/.claude/looper.json")
@@ -567,6 +570,42 @@ SECOND_CONFIG=$(cat "$FIXTURE_BOOT/.claude/looper.json")
 assert_eq "bootstrap: idempotent config" "$FIRST_CONFIG" "$SECOND_CONFIG"
 
 rm -rf "$FIXTURE_BOOT" "$BOOT_STDOUT" "$BOOT_STDERR"
+
+# ── plugin: stack auto-detection ─────────────────────
+
+echo ""
+echo "-- plugin: stack auto-detection ----------"
+
+# Helper: test that a stack marker file triggers the expected preset
+test_stack_detection() {
+  local desc="$1" marker="$2" expected_stack="$3" expected_gate="$4"
+  local fixture
+  fixture=$(make_fixture)
+  rm -f "$fixture/.claude/looper.json"
+  echo "node_modules/" > "$fixture/.gitignore"
+  # Create marker file(s) - supports space-separated list
+  for f in $marker; do
+    touch "$fixture/$f"
+  done
+  local out=$(mktemp) err=$(mktemp)
+  run_kernel "$fixture" "SessionStart" "" "$out" "$err"
+  assert_eq "detect $desc: exits 0" "0" "$?"
+  assert_contains "detect $desc: detected $expected_stack" "detected $expected_stack" "$(cat "$err")"
+  assert_true "detect $desc: has $expected_gate gate" jq -e --arg g "$expected_gate" '.["quality-gates"].gates[] | select(.name == $g)' "$fixture/.claude/looper.json"
+  rm -rf "$fixture" "$out" "$err"
+}
+
+test_stack_detection "rust"              "Cargo.toml"              "rust"             "check"
+test_stack_detection "go"                "go.mod"                  "go"               "build"
+test_stack_detection "python"            "pyproject.toml"          "python"           "typecheck"
+test_stack_detection "python-reqs"       "requirements.txt"        "python"           "typecheck"
+test_stack_detection "deno"              "deno.json"               "deno"             "check"
+test_stack_detection "deno-jsonc"        "deno.jsonc"              "deno"             "check"
+test_stack_detection "typescript-biome"  "tsconfig.json biome.json" "typescript-biome" "typecheck"
+test_stack_detection "typescript-eslint" "tsconfig.json"           "typescript-eslint" "typecheck"
+
+# Priority: Rust wins over TypeScript when both markers present
+test_stack_detection "rust-over-ts"      "Cargo.toml tsconfig.json" "rust"            "check"
 
 # ── plugin: bundled package resolution ─────────────────
 

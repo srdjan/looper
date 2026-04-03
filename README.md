@@ -20,7 +20,7 @@ Or for local development:
 claude --plugin-dir /path/to/looper
 ```
 
-On first session start, the kernel creates a default `.claude/looper.json` with the `quality-gates` package. Run `/looper:looper-config` for guided configuration.
+On first session start, the kernel auto-detects your tech stack (Rust, Go, Python, Deno, TypeScript+Biome, TypeScript+ESLint) and writes a `.claude/looper.json` with the matching preset. No configuration needed for common stacks. Run `/looper:looper-config` for fine-tuning.
 
 **Requirements:** `jq`.
 
@@ -160,7 +160,7 @@ packages/quality-gates/
     post-tool-use.sh    # PostToolUse handler
     stop.sh             # Stop handler
   lib/                  # helper scripts
-  defaults.json         # default config
+  presets/              # stack-specific default configs
 ```
 
 Convention over configuration: if `hooks/stop.sh` exists, the package handles Stop events. Missing handler = package has nothing to do for that event.
