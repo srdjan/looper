@@ -9,14 +9,14 @@ The plugin distribution replaces the shell installer with Claude Code's native p
 ## Prerequisites
 
 - Claude Code with plugin support
-- The looper plugin installed: `/plugin install looper` or `claude --plugin-dir /path/to/looper`
+- The looper plugin installed: `claude plugin add looper` or `claude --plugin-dir /path/to/looper`
 
 ## Migration Steps
 
 ### 1. Install the Plugin
 
 ```
-/plugin install looper
+claude plugin add looper
 ```
 
 Or for local development:

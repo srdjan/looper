@@ -84,6 +84,16 @@ PreToolUse and PostToolUse register with no matcher (receives all tool events). 
 - **Package loading**: read `packages` array from `looper.json`, resolve directories
 - **Shared state**: `files_touched` array, maintained in kernel.json
 
+### First-Run Bootstrap
+
+On SessionStart, the kernel calls `ensure_config` before dispatching to packages. This function:
+
+1. Creates `.claude/state/` if missing
+2. Creates `.claude/looper.json` with defaults if missing (merges `defaults.json` from each bundled package)
+3. Appends `.claude/state/` to `.gitignore` if not already present
+
+After the first session, `ensure_config` is a no-op (the config file already exists).
+
 ### What the Kernel Does NOT Own
 
 Scoring, gate evaluation, coaching messages, context injection content, post-edit checks, discovery commands. All domain logic lives in packages.
@@ -133,7 +143,6 @@ packages/<name>/
     post-tool-use.sh    # PostToolUse handler (optional)
     stop.sh             # Stop handler (optional)
   lib/                  # helper scripts (optional)
-  skills/               # SKILL.md files (optional)
   defaults.json         # default config (optional)
 ```
 
@@ -150,14 +159,12 @@ Convention over configuration: if a handler file exists, the kernel calls it. No
     "PreToolUse": "Edit|MultiEdit|Write",
     "PostToolUse": "Edit|MultiEdit|Write"
   },
-  "phase": "core",
-  "skills": ["skills/looper-config"]
+  "phase": "core"
 }
 ```
 
 - `matchers`: regex patterns for PreToolUse/PostToolUse tool name filtering. Absent means "all tools".
 - `phase`: `"core"` (default) or `"post"`. Controls when the package's stop handler is evaluated.
-- `skills`: relative paths to skill directories to install.
 
 ### Handler Protocol
 

@@ -160,7 +160,6 @@ packages/quality-gates/
     post-tool-use.sh    # PostToolUse handler
     stop.sh             # Stop handler
   lib/                  # helper scripts
-  skills/               # SKILL.md files
   defaults.json         # default config
 ```
 
@@ -238,14 +237,12 @@ fi
     "PreToolUse": "Edit|MultiEdit|Write",
     "PostToolUse": "Edit|MultiEdit|Write"
   },
-  "phase": "core",
-  "skills": ["skills/looper-config"]
+  "phase": "core"
 }
 ```
 
 - `matchers`: regex for tool name filtering. Absent = all tools.
 - `phase`: `"core"` (default) or `"post"`. Post-phase packages only run after all core packages are satisfied.
-- `skills`: skill directories to install.
 
 ### Handler Environment
 
