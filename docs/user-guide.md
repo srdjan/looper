@@ -16,13 +16,13 @@ Looper is a Claude Code plugin. It uses four hooks (SessionStart, PreToolUse, Po
 
 ## 2. Installation
 
-Install the plugin:
+Install from the official marketplace after approval:
 
 ```bash
-claude plugin add looper
+claude plugin install looper@claude-plugins-official
 ```
 
-For local development (running from a git clone):
+For local development or pre-release testing (running from a git clone):
 
 ```bash
 claude --plugin-dir /path/to/looper
@@ -681,10 +681,11 @@ The kernel recreates the directory on the next session.
 ## Quick Reference
 
 ```
-Install:     claude plugin add looper
+Install*:    claude plugin install looper@claude-plugins-official
+Local dev:   claude --plugin-dir /path/to/looper
 Configure:   /looper:looper-config
-Disable:     claude plugin disable looper
-Remove:      claude plugin remove looper
+Disable:     claude plugin disable looper@claude-plugins-official
+Remove:      claude plugin uninstall looper@claude-plugins-official
 
 Config file: .claude/looper.json
 State dir:   .claude/state/       (gitignored, resets per session)
@@ -694,3 +695,5 @@ Hook exits:  0 = allow, 2 = block/continue
 
 Symbols:     v = pass,  x = fail,  o = skipped
 ```
+
+`*` once listed in the official marketplace

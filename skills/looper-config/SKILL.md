@@ -113,7 +113,7 @@ These are advanced options users can edit manually later.
 4. On confirmation:
    - Write the file using the Write tool
    - Validate with: `jq empty .claude/looper.json`
-   - If the looper plugin is not enabled, suggest running `/plugin install looper`
+   - If the looper plugin is not enabled, suggest running `/plugin install looper@claude-plugins-official` once the marketplace listing is live
 
 ## Rules
 

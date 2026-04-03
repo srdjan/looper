@@ -1,7 +1,10 @@
 {
-  "name": "improvement-loop",
-  "version": "1.0.0",
-  "description": "Agentic Improvement Loop via Claude Code Stop hook",
+  "name": "looper",
+  "version": "2.0.0",
+  "description": "Extensible improvement loop for Claude Code",
+  "homepage": "https://github.com/srdjan/looper",
+  "repository": "https://github.com/srdjan/looper",
+  "license": "MIT",
   "scripts": {
     "test": "bash tests/test-suite.sh"
   }

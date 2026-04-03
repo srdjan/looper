@@ -8,13 +8,13 @@ Looper is a package-based improvement loop for Claude Code. A minimal kernel dis
 
 ## Install
 
-As a Claude Code plugin:
+From the official Claude Code marketplace after approval:
 
 ```bash
-claude plugin add looper
+claude plugin install looper@claude-plugins-official
 ```
 
-Or for local development:
+For local development or pre-release testing:
 
 ```bash
 claude --plugin-dir /path/to/looper
@@ -27,8 +27,8 @@ On first session start, the kernel auto-detects your tech stack (Rust, Go, Pytho
 ## Disable / Uninstall
 
 ```bash
-claude plugin disable looper     # stop hooks from firing
-claude plugin remove looper      # remove the plugin entirely
+claude plugin disable looper@claude-plugins-official    # stop hooks from firing
+claude plugin uninstall looper@claude-plugins-official  # remove the plugin entirely
 ```
 
 Project config (`.claude/looper.json`) and state (`.claude/state/`) are preserved. Delete them manually if no longer needed.
