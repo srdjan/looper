@@ -340,6 +340,12 @@ pkg_config '.gates'               # read own config from looper.json
 | PostToolUse | per edit | stdout | per-file lint/type errors |
 | Stop | per attempt | stderr | gate results, failures, coaching |
 
+## Session History
+
+Each completed session appends a one-line JSON summary to `.claude/state/sessions.jsonl`. Budget-exhausted sessions are promoted to the log on the next SessionStart. Run `/looper:status` to view session history, aggregate stats, and current config.
+
+The log is local-only, gitignored, and contains: status, iterations, score, baseline savings, and timestamp.
+
 >
 >#### Built By
 > Claude & Srdjan

@@ -5,6 +5,14 @@
 set -euo pipefail
 source "$LOOPER_HOOKS_DIR/pkg-utils.sh"
 
+# ── Promote incomplete session from previous run ───────
+SESSION_CURRENT="$LOOPER_STATE_DIR/session-current.json"
+SESSIONS_LOG="$LOOPER_STATE_DIR/sessions.jsonl"
+if [ -f "$SESSION_CURRENT" ]; then
+  jq '.status = "budget_exhausted"' "$SESSION_CURRENT" >> "$SESSIONS_LOG" 2>/dev/null || true
+  rm -f "$SESSION_CURRENT"
+fi
+
 pkg_state_write '.scores' '[]'
 pkg_state_write '.checks' '{}'
 pkg_state_write '.satisfied' 'false'

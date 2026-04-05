@@ -972,6 +972,69 @@ assert_contains "scope-guard+qg: reports violation" "outside allowed scope" "$(c
 
 rm -rf "$FIXTURE_SG2" "$SG2_STDOUT" "$SG2_STDERR"
 
+# ── session summaries ─────────────────────────────────
+
+echo ""
+echo "-- session summaries ---------------------"
+
+# Summary appended on completion
+FIXTURE_SS=$(make_fixture)
+install_package "$FIXTURE_SS" "quality-gates"
+cat > "$FIXTURE_SS/.claude/looper.json" <<'EOF'
+{ "max_iterations": 10, "packages": ["quality-gates"], "quality-gates": { "gates": [{ "name": "pass", "command": "true", "weight": 100 }] } }
+EOF
+jq -n '{ iteration: 0, max_iterations: 10, status: "running", files_touched: [] }' > "$FIXTURE_SS/.claude/state/kernel.json"
+mkdir -p "$FIXTURE_SS/.claude/state/quality-gates"
+echo '{"scores":[],"checks":{},"satisfied":false,"baseline":null}' > "$FIXTURE_SS/.claude/state/quality-gates/state.json"
+
+SS_STDOUT=$(mktemp); SS_STDERR=$(mktemp)
+run_kernel "$FIXTURE_SS" "Stop" '{"stop_hook_active":false}' "$SS_STDOUT" "$SS_STDERR"
+assert_eq "summary: completion exits 0" "0" "$?"
+assert_true "summary: sessions.jsonl created" test -f "$FIXTURE_SS/.claude/state/sessions.jsonl"
+assert_eq "summary: status is complete" "complete" "$(jq -r '.status' "$FIXTURE_SS/.claude/state/sessions.jsonl")"
+assert_eq "summary: score recorded" "100" "$(jq -r '.score' "$FIXTURE_SS/.claude/state/sessions.jsonl")"
+assert_eq "summary: has timestamp" "true" "$(jq -e '.timestamp' "$FIXTURE_SS/.claude/state/sessions.jsonl" >/dev/null 2>&1 && echo true || echo false)"
+assert_false "summary: session-current.json cleaned up" test -f "$FIXTURE_SS/.claude/state/session-current.json"
+
+rm -rf "$FIXTURE_SS" "$SS_STDOUT" "$SS_STDERR"
+
+# session-current.json written on continue (exit 2)
+FIXTURE_SS2=$(make_fixture)
+install_package "$FIXTURE_SS2" "quality-gates"
+cat > "$FIXTURE_SS2/.claude/looper.json" <<'EOF'
+{ "max_iterations": 10, "packages": ["quality-gates"], "quality-gates": { "gates": [{ "name": "fail", "command": "false", "weight": 100 }] } }
+EOF
+jq -n '{ iteration: 0, max_iterations: 10, status: "running", files_touched: [] }' > "$FIXTURE_SS2/.claude/state/kernel.json"
+mkdir -p "$FIXTURE_SS2/.claude/state/quality-gates"
+echo '{"scores":[],"checks":{},"satisfied":false,"baseline":null}' > "$FIXTURE_SS2/.claude/state/quality-gates/state.json"
+
+SS2_STDOUT=$(mktemp); SS2_STDERR=$(mktemp)
+run_kernel "$FIXTURE_SS2" "Stop" '{"stop_hook_active":false}' "$SS2_STDOUT" "$SS2_STDERR"
+assert_eq "summary: continue exits 2" "2" "$?"
+assert_true "summary: session-current.json created" test -f "$FIXTURE_SS2/.claude/state/session-current.json"
+assert_eq "summary: current status is in_progress" "in_progress" "$(jq -r '.status' "$FIXTURE_SS2/.claude/state/session-current.json")"
+
+rm -rf "$FIXTURE_SS2" "$SS2_STDOUT" "$SS2_STDERR"
+
+# Incomplete session promoted on next SessionStart
+FIXTURE_SS3=$(make_fixture)
+install_package "$FIXTURE_SS3" "quality-gates"
+cat > "$FIXTURE_SS3/.claude/looper.json" <<'EOF'
+{ "max_iterations": 10, "packages": ["quality-gates"], "quality-gates": { "gates": [{ "name": "pass", "command": "true", "weight": 100 }] } }
+EOF
+mkdir -p "$FIXTURE_SS3/.claude/state"
+# Simulate a leftover session-current.json from a budget-exhausted session
+jq -n '{status:"in_progress",timestamp:"2025-01-01T00:00:00Z",iteration:10,max_iterations:10,score:50,total:100,introduced_failures:1,preexisting_failures:0,score_history:[50]}' > "$FIXTURE_SS3/.claude/state/session-current.json"
+
+SS3_STDOUT=$(mktemp); SS3_STDERR=$(mktemp)
+run_kernel "$FIXTURE_SS3" "SessionStart" "" "$SS3_STDOUT" "$SS3_STDERR"
+assert_eq "summary: promotion exits 0" "0" "$?"
+assert_true "summary: sessions.jsonl created by promotion" test -f "$FIXTURE_SS3/.claude/state/sessions.jsonl"
+assert_eq "summary: promoted status is budget_exhausted" "budget_exhausted" "$(jq -r '.status' "$FIXTURE_SS3/.claude/state/sessions.jsonl")"
+assert_false "summary: session-current.json removed after promotion" test -f "$FIXTURE_SS3/.claude/state/session-current.json"
+
+rm -rf "$FIXTURE_SS3" "$SS3_STDOUT" "$SS3_STDERR"
+
 # ── Summary ─────────────────────────────────────────────
 
 TOTAL_TESTS=$((PASS + FAIL))

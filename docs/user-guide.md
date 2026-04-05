@@ -639,7 +639,25 @@ An optional `baseline_timeout` (default 60 seconds) controls the per-gate time l
 
 ---
 
-## 11. Troubleshooting
+## 11. Session History
+
+Each completed loop session appends a one-line JSON summary to `.claude/state/sessions.jsonl`. The summary records: status (complete or budget_exhausted), iterations used, score, baseline savings, and timestamp.
+
+If a session exhausts its budget (the kernel exits before quality-gates can finalize), the incomplete state is promoted to the log on the next SessionStart. This ensures every session leaves a trace, regardless of how it ended.
+
+Run `/looper:status` to view your session history:
+
+```
+> /looper:status
+```
+
+This shows the last 10 sessions as a table, aggregate stats (completion rate, average iterations, baseline savings), the current in-progress session if one exists, and your active configuration.
+
+The log is local-only and gitignored. It lives alongside the ephemeral state files in `.claude/state/`.
+
+---
+
+## 12. Troubleshooting
 
 ### Budget exhausted before gates pass
 
@@ -709,7 +727,7 @@ The kernel recreates the directory on the next session.
 
 ---
 
-## 12. Design Decisions
+## 13. Design Decisions
 
 **Why shell scripts?** Claude Code hooks are command-based. Shell is the natural fit: no runtime dependencies, no build step, no package manager. The entire kernel is two files totaling ~500 lines.
 

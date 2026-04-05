@@ -13,3 +13,10 @@
 - Leading indicators: Multi-package composition validated with two real packages; PreToolUse blocking demonstrated at the package level; SDK authoring proven with a production package
 - Guardrails: No interference with quality-gates; no blocking when no scope rules configured; no startup latency beyond config read
 - Frontier note: Frontier thinning but still viable. Session analytics, adaptive coaching, and team features remain. The SDK + two real packages make a strong marketplace launch story.
+
+## Iteration 3: Session Summaries and /looper:status
+- What changed: Added session summary persistence. Each completed session appends a JSON summary line to `.claude/state/sessions.jsonl` recording status, iterations, score, baseline savings, and timestamp. Budget-exhausted sessions are captured via `session-current.json` and promoted to the log on the next SessionStart. Added `/looper:status` command for viewing session history, aggregate stats, and current config.
+- Primary metric: Users have access to per-session loop summaries showing whether Looper is helping
+- Leading indicators: Session data persists across sessions; config tuning becomes data-driven
+- Guardrails: No hook path slowdown; summary-only (no full gate output); local-first, no external services
+- Frontier note: Frontier is thin. The project has a complete platform ready for marketplace launch. Remaining features (parallel gates, adaptive coaching, team tier) should be driven by real user feedback.

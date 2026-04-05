@@ -1,114 +1,100 @@
 ## Implementation Plan
 
-### Slice 1: SDK Core Contract
+### Slice 1: Session Record Domain
 - Files:
-  - `sdk/typescript/mod.ts`
-  - `sdk/typescript/types.ts`
+  - `packages/session-analytics/mod.ts`
+  - `packages/session-analytics/package.json`
 - Types:
-  - `SdkHook`
-  - `PackageDefinition`
-  - `SessionStartResult`
-  - `PreToolUseResult`
-  - `PostToolUseResult`
-  - `StopResult`
-  - `ConfigSchema<T>`
-  - `StateSchema<T>`
+  - `SessionAnalyticsConfig`
+  - `SessionRecord`
+  - `PackageOutcome`
+  - `BudgetOutcome`
 - Dependencies:
   - none
 - Tests:
-  - Deno unit tests for typed return normalization and exhaustive hook routing
+  - SDK unit tests for config parsing and pure session-summary helpers
 - Estimated complexity:
   - moderate
 
-### Slice 2: Runtime Loader and State Bridge
+### Slice 2: SessionStart Context and State Capture
 - Files:
-  - `sdk/typescript/runtime.ts`
-  - `sdk/typescript/io.ts`
-  - `sdk/typescript/state.ts`
-  - `sdk/typescript/env.ts`
+  - `packages/session-analytics/mod.ts`
+  - `packages/session-analytics/hooks/session-start.sh`
 - Types:
-  - `RuntimeEnv`
-  - `RuntimeContext`
-  - `StateStore<T>`
-  - `HookExecution`
+  - `PreviousSessionSummary`
 - Dependencies:
   - Slice 1
 - Tests:
-  - Deno unit tests for config loading, state persistence, and stream/exit-code mapping
+  - shell integration test proving previous-session context is shown at SessionStart
 - Estimated complexity:
   - moderate
 
-### Slice 3: Test Harness
+### Slice 3: Stop-Time Summary and Local Persistence
 - Files:
-  - `sdk/typescript/testing.ts`
-  - `sdk/typescript/testing_test.ts`
+  - `packages/session-analytics/mod.ts`
+  - `packages/session-analytics/hooks/stop.sh`
 - Types:
-  - `TestHarnessInput`
-  - `TestHarnessResult`
-  - `MockCommand`
+  - `CurrentSessionSummary`
+  - `SessionHistory`
 - Dependencies:
   - Slices 1 and 2
 - Tests:
-  - Deno unit tests for isolated handler execution with mocked command results
+  - SDK unit tests for summary generation from kernel and package state
+  - shell integration tests for complete, continue, and budget-exhausted sessions
 - Estimated complexity:
   - moderate
 
-### Slice 4: Scaffolder and Reference Package
+### Slice 4: Cross-Package Insights
 - Files:
-  - `sdk/typescript/scaffold.ts`
-  - `packages/sdk-hello/package.json`
-  - `packages/sdk-hello/hooks/session-start.sh`
-  - `packages/sdk-hello/hooks/stop.sh`
-  - `packages/sdk-hello/mod.ts`
-- Types:
-  - `ScaffoldOptions`
-- Dependencies:
-  - Slices 1 and 2
-- Tests:
-  - Deno unit test for scaffold output shape
-  - shell-level fixture test proving the example package executes through generated wrappers
-- Estimated complexity:
-  - moderate
-
-### Slice 5: Kernel-Level Integration Test and Docs
-- Files:
+  - `packages/session-analytics/mod.ts`
   - `tests/test-suite.sh`
-  - `docs/sdk-design.md`
+- Types:
+  - `TopCause`
+  - `PackageInsight`
+- Dependencies:
+  - Slice 3
+- Tests:
+  - shell integration coverage across `quality-gates`, `scope-guard`, and `session-analytics`
+  - assertions for blocked edits, pre-existing failures, and dominant continue cause
+- Estimated complexity:
+  - moderate
+
+### Slice 5: Docs and Example Config
+- Files:
+  - `README.md`
+  - `docs/user-guide.md`
+  - `docs/evolution-log.md`
 - Types:
   - none
 - Dependencies:
   - Slices 1 through 4
 - Tests:
-  - extend `tests/test-suite.sh` with an SDK-authored package fixture
-  - run `bash tests/test-suite.sh`
-  - run `deno task sdk:check`
-  - run `deno task sdk:test`
+  - verify config examples and commands remain consistent
 - Estimated complexity:
   - low
 
 ### Integration
 - Order constraints:
-  - Slice 1 -> Slice 2 -> Slice 3
-  - Slice 4 depends on Slices 1 and 2
-  - Slice 5 depends on Slices 1 through 4
+  - Slice 1 -> Slice 2 -> Slice 3 -> Slice 4 -> Slice 5
 - Parallel-ready:
-  - Slice 3 and Slice 4 can proceed in parallel once Slice 2 lands
+  - none worth splitting before Slice 3, because the package contract and summary shape are the critical path
 - Integration test:
-  - execute a generated example package through Looper's existing shell hook contract and verify stream routing plus stop semantics
+  - run a fixture with `quality-gates`, `scope-guard`, and `session-analytics`, then verify SessionStart shows the previous summary and Stop writes a correct local session record plus final report
 
 ### Dependency Graph
 
 ```text
-Slice 1: SDK Core Contract
+Slice 1: Session Record Domain
   |
   v
-Slice 2: Runtime Loader and State Bridge
-  | \
-  |  \
-  v   v
-Slice 3: Test Harness   Slice 4: Scaffolder and Reference Package
-  \                     /
-   \                   /
-    v                 v
-     Slice 5: Kernel-Level Integration Test and Docs
+Slice 2: SessionStart Context and State Capture
+  |
+  v
+Slice 3: Stop-Time Summary and Local Persistence
+  |
+  v
+Slice 4: Cross-Package Insights
+  |
+  v
+Slice 5: Docs and Example Config
 ```

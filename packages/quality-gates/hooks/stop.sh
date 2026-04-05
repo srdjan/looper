@@ -108,6 +108,37 @@ done < <(echo "$GATES" | jq -r '.[] | [.name, .command, (.weight | tostring), (.
 pkg_state_append '.scores' "$SCORE"
 pkg_state_write '.checks' "{${CHECKS_PAIRS}}"
 
+# ── Session summary ───────────────────────────────────
+SESSIONS_LOG="$LOOPER_STATE_DIR/sessions.jsonl"
+SESSION_CURRENT="$LOOPER_STATE_DIR/session-current.json"
+
+# Count pre-existing vs introduced failures
+PREEXISTING_COUNT=0
+INTRODUCED_COUNT=0
+if has_baseline; then
+  PREEXISTING_COUNT=$(echo -e "$GATE_RESULTS" | grep -c '^ *~' || true)
+fi
+INTRODUCED_COUNT=$REQUIRED_FAILED
+
+write_session_summary() {
+  local status="$1"
+  local scores
+  scores=$(pkg_state_read '.scores')
+  jq -n --arg s "$status" \
+    --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson iter "$CURRENT_PASS" \
+    --argjson max "$LOOPER_MAX_ITERATIONS" \
+    --argjson score "$SCORE" \
+    --argjson total "$TOTAL" \
+    --argjson req_failed "$INTRODUCED_COUNT" \
+    --argjson preexisting "$PREEXISTING_COUNT" \
+    --argjson scores "$scores" \
+    '{status:$s,timestamp:$ts,iteration:$iter,max_iterations:$max,score:$score,total:$total,introduced_failures:$req_failed,preexisting_failures:$preexisting,score_history:$scores}'
+}
+
+# Always write current session state (overwritten each stop)
+write_session_summary "in_progress" > "$SESSION_CURRENT"
+
 if [ "$REQUIRED_FAILED" -eq 0 ]; then
   pkg_state_write '.satisfied' 'true'
 
@@ -137,6 +168,10 @@ if [ "$REQUIRED_FAILED" -eq 0 ]; then
     echo "Pre-existing failures (not your responsibility):" >&2
     echo -e "$PREEXISTING" >&2
   fi
+
+  # Append completed session summary
+  write_session_summary "complete" >> "$SESSIONS_LOG"
+  rm -f "$SESSION_CURRENT"
 
   exit 0
 fi
