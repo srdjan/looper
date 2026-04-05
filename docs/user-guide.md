@@ -651,9 +651,11 @@ Run `/looper:status` to view your session history:
 > /looper:status
 ```
 
-This shows the last 10 sessions as a table, aggregate stats (completion rate, average iterations, baseline savings), the current in-progress session if one exists, and your active configuration.
+This shows the last 10 sessions as a table, aggregate stats (completion rate, average iterations, baseline savings), the current in-progress session if one exists, your active configuration, and a short `Recommendations:` section when the recent history supports a concrete suggestion.
 
 The log is local-only and gitignored. It lives alongside the ephemeral state files in `.claude/state/`.
+
+Looper also uses the same heuristics inside `quality-gates` Stop feedback. When a session is failing and the recommendation is high-signal, you will see a short `Suggestions:` block near the bottom of the report. These suggestions are read-only; Looper never rewrites your config automatically.
 
 ---
 

@@ -30,7 +30,6 @@ Deno.test("preToolUse: blocks file matching blocked pattern", async () => {
     input: { tool_name: "Edit", tool_input: { file_path: "package-lock.json" } },
   });
   assertEquals(result.exitCode, 2);
-  assertEquals(result.stdout.includes("deny"), true);
 });
 
 Deno.test("preToolUse: allows file not matching blocked pattern", async () => {

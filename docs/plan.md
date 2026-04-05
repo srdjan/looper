@@ -1,100 +1,97 @@
 ## Implementation Plan
 
-### Slice 1: Session Record Domain
+### Slice 1: Recommendation Rules Domain
 - Files:
-  - `packages/session-analytics/mod.ts`
-  - `packages/session-analytics/package.json`
+  - `packages/quality-gates/lib/recommendations.sh`
 - Types:
-  - `SessionAnalyticsConfig`
-  - `SessionRecord`
-  - `PackageOutcome`
-  - `BudgetOutcome`
+  - recommendation categories encoded as stable rule ids
+  - session-derived heuristics for baseline, budget, slow checks, and scope drift
 - Dependencies:
   - none
 - Tests:
-  - SDK unit tests for config parsing and pure session-summary helpers
+  - shell fixture tests for recommendation rules fed with synthetic session/config inputs
 - Estimated complexity:
   - moderate
 
-### Slice 2: SessionStart Context and State Capture
+### Slice 2: `/looper:status` Recommendations
 - Files:
-  - `packages/session-analytics/mod.ts`
-  - `packages/session-analytics/hooks/session-start.sh`
+  - `commands/status.md`
 - Types:
-  - `PreviousSessionSummary`
+  - `status recommendation row` output shape
 - Dependencies:
   - Slice 1
 - Tests:
-  - shell integration test proving previous-session context is shown at SessionStart
+  - shell integration coverage for histories that should and should not emit recommendations
 - Estimated complexity:
-  - moderate
+  - low
 
-### Slice 3: Stop-Time Summary and Local Persistence
+### Slice 3: Adaptive Stop Coaching
 - Files:
-  - `packages/session-analytics/mod.ts`
-  - `packages/session-analytics/hooks/stop.sh`
+  - `packages/quality-gates/hooks/stop.sh`
+  - `packages/quality-gates/hooks/session-start.sh`
 - Types:
-  - `CurrentSessionSummary`
-  - `SessionHistory`
+  - none beyond Slice 1 rule ids
 - Dependencies:
-  - Slices 1 and 2
+  - Slice 1
 - Tests:
-  - SDK unit tests for summary generation from kernel and package state
-  - shell integration tests for complete, continue, and budget-exhausted sessions
+  - shell integration tests for repeated budget pressure, repeated introduced failures, and baseline-worthy sessions
 - Estimated complexity:
   - moderate
 
-### Slice 4: Cross-Package Insights
+### Slice 4: Repo Test and Task Integration
 - Files:
-  - `packages/session-analytics/mod.ts`
   - `tests/test-suite.sh`
+  - `deno.json`
 - Types:
-  - `TopCause`
-  - `PackageInsight`
+  - none
 - Dependencies:
-  - Slice 3
+  - Slices 1 through 3
 - Tests:
-  - shell integration coverage across `quality-gates`, `scope-guard`, and `session-analytics`
-  - assertions for blocked edits, pre-existing failures, and dominant continue cause
+  - extend full shell suite with recommendation and adaptive-coaching assertions
+  - keep existing SDK and package checks green
 - Estimated complexity:
-  - moderate
+  - low
 
-### Slice 5: Docs and Example Config
+### Slice 5: Docs and Evolution Log
 - Files:
   - `README.md`
   - `docs/user-guide.md`
   - `docs/evolution-log.md`
+  - `.project-loop-state.md`
 - Types:
   - none
 - Dependencies:
   - Slices 1 through 4
 - Tests:
-  - verify config examples and commands remain consistent
+  - verify command examples and recommendation descriptions stay aligned with implementation
 - Estimated complexity:
   - low
 
 ### Integration
 - Order constraints:
-  - Slice 1 -> Slice 2 -> Slice 3 -> Slice 4 -> Slice 5
+  - Slice 1 -> Slice 2
+  - Slice 1 -> Slice 3
+  - Slice 4 depends on Slices 1 through 3
+  - Slice 5 depends on Slices 1 through 4
 - Parallel-ready:
-  - none worth splitting before Slice 3, because the package contract and summary shape are the critical path
+  - Slice 2 and Slice 3 can proceed in parallel once Slice 1 lands
 - Integration test:
-  - run a fixture with `quality-gates`, `scope-guard`, and `session-analytics`, then verify SessionStart shows the previous summary and Stop writes a correct local session record plus final report
+  - run histories that demonstrate budget exhaustion, recurring introduced failures, and successful baseline savings, then verify `/looper:status` and Stop feedback produce the same recommendation direction
 
 ### Dependency Graph
 
 ```text
-Slice 1: Session Record Domain
+Slice 1: Recommendation Rules Domain
+  | \
+  |  \
+  v   v
+Slice 2: /looper:status Recommendations
+Slice 3: Adaptive Stop Coaching
+  \   /
+   \ /
+    v
+Slice 4: Repo Test and Task Integration
   |
   v
-Slice 2: SessionStart Context and State Capture
-  |
-  v
-Slice 3: Stop-Time Summary and Local Persistence
-  |
-  v
-Slice 4: Cross-Package Insights
-  |
-  v
-Slice 5: Docs and Example Config
+Slice 5: Docs and Evolution Log
 ```

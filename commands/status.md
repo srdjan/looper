@@ -1,6 +1,6 @@
 ---
 description: Show loop session history and current state
-allowed-tools: Bash(jq:*), Bash(cat:*), Bash(wc:*), Bash(tail:*), Bash(test:*), Read
+allowed-tools: Bash(bash:*), Bash(jq:*), Bash(cat:*), Bash(wc:*), Bash(tail:*), Bash(test:*), Read
 ---
 
 # Looper Status
@@ -9,9 +9,19 @@ Show the current loop state and recent session history.
 
 ## Steps
 
-1. Check if `.claude/state/sessions.jsonl` exists. If not, say "No session history yet. Sessions are recorded after the first loop completes."
+1. Run:
 
-2. If it exists, read the last 10 sessions and display them as a table:
+```bash
+bash "$(claude plugin root looper)/packages/quality-gates/lib/status-report.sh"
+```
+
+2. Print the output directly if the script succeeds.
+
+3. If the script is unavailable, fall back to the manual procedure below.
+
+4. Check if `.claude/state/sessions.jsonl` exists. If not, say "No session history yet. Sessions are recorded after the first loop completes."
+
+5. If it exists, read the last 10 sessions and display them as a table:
 
 ```
 Session History (last N sessions):
@@ -29,7 +39,7 @@ Build the table from the JSONL data using jq. For each line:
 - Baseline: if `.preexisting_failures` > 0, show "N saved", otherwise "-"
 - Timestamp: `.timestamp`
 
-3. Show aggregate stats:
+6. Show aggregate stats:
 
 ```
 Summary:
@@ -40,7 +50,7 @@ Summary:
   Iterations saved by baseline: N
 ```
 
-4. If `.claude/state/session-current.json` exists, also show the in-progress session state:
+7. If `.claude/state/session-current.json` exists, also show the in-progress session state:
 
 ```
 Current session (in progress):
@@ -50,7 +60,7 @@ Current session (in progress):
   Pre-existing failures: 2
 ```
 
-5. If `.claude/looper.json` exists, show the active configuration summary:
+8. If `.claude/looper.json` exists, show the active configuration summary:
 
 ```
 Config:
@@ -59,3 +69,9 @@ Config:
   Baseline: enabled/disabled
   Gates: typecheck, lint, test, coverage
 ```
+
+9. Add a `Recommendations:` section when the history or current state supports a concrete suggestion. Prefer only a few high-signal suggestions:
+
+- enable baseline after repeated budget-exhausted sessions without baseline
+- raise or lower `max_iterations` based on recent session patterns
+- add `scope-guard` when the current session is touching many files without scope protection

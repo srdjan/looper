@@ -19,4 +19,11 @@
 - Primary metric: Users have access to per-session loop summaries showing whether Looper is helping
 - Leading indicators: Session data persists across sessions; config tuning becomes data-driven
 - Guardrails: No hook path slowdown; summary-only (no full gate output); local-first, no external services
-- Frontier note: Frontier is thin. The project has a complete platform ready for marketplace launch. Remaining features (parallel gates, adaptive coaching, team tier) should be driven by real user feedback.
+- Frontier note: Adaptive coaching remained as the next smallest useful step because the analytics layer existed but was not yet actionable.
+
+## Iteration 4: Adaptive Coaching and Recommendations
+- What changed: Added a shared recommendation engine in `packages/quality-gates/lib/recommendations.sh`, a `status-report.sh` renderer behind `/looper:status`, and adaptive `Suggestions:` output in failing quality-gates Stop feedback. Recommendations are local-first and read-only, covering cases like enabling baseline, tuning `max_iterations`, and adding `scope-guard`.
+- Primary metric: Users receive concrete, situation-aware next steps instead of raw session history only
+- Leading indicators: `/looper:status` surfaces recommendations on real history; failing sessions emit short suggestion blocks; recommendation logic stays consistent between status and Stop output
+- Guardrails: No config auto-mutation; no remote telemetry; recommendation output stays small and only appears when signal is strong enough
+- Frontier note: Frontier is now very thin. The core local-first loop, package SDK, multi-package control, analytics, and recommendations are all in place. Remaining work should be driven by real usage rather than more speculative features.

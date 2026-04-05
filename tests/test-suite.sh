@@ -1035,6 +1035,74 @@ assert_false "summary: session-current.json removed after promotion" test -f "$F
 
 rm -rf "$FIXTURE_SS3" "$SS3_STDOUT" "$SS3_STDERR"
 
+# ── adaptive recommendations ──────────────────────────
+
+echo ""
+echo "-- adaptive recommendations --------------"
+
+FIXTURE_REC=$(make_fixture)
+cat > "$FIXTURE_REC/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "gates": [{ "name": "test", "command": "npm test", "weight": 100 }]
+  }
+}
+EOF
+mkdir -p "$FIXTURE_REC/.claude/state"
+cat > "$FIXTURE_REC/.claude/state/sessions.jsonl" <<'EOF'
+{"status":"budget_exhausted","timestamp":"2025-01-01T00:00:00Z","iteration":10,"max_iterations":10,"score":70,"total":100,"introduced_failures":1,"preexisting_failures":0,"score_history":[70]}
+{"status":"budget_exhausted","timestamp":"2025-01-02T00:00:00Z","iteration":10,"max_iterations":10,"score":80,"total":100,"introduced_failures":1,"preexisting_failures":0,"score_history":[80]}
+EOF
+jq -n '{ iteration: 0, max_iterations: 10, status: "running", files_touched: ["src/a.ts","src/b.ts","src/c.ts","src/d.ts","src/e.ts","src/f.ts","src/g.ts","src/h.ts"] }' > "$FIXTURE_REC/.claude/state/kernel.json"
+
+(
+  source "$PROJECT_DIR/packages/quality-gates/lib/recommendations.sh"
+  recommendations_json \
+    "$FIXTURE_REC/.claude/state/sessions.jsonl" \
+    "$FIXTURE_REC/.claude/looper.json" \
+    "$FIXTURE_REC/.claude/state/kernel.json" \
+    0 \
+    0 \
+    0
+) > /tmp/looper-rec.json 2>/dev/null
+assert_contains "recommendations: enable_baseline rule emitted" "enable_baseline" "$(cat /tmp/looper-rec.json)"
+assert_contains "recommendations: increase_budget rule emitted" "increase_budget" "$(cat /tmp/looper-rec.json)"
+assert_contains "recommendations: add_scope_guard rule emitted" "add_scope_guard" "$(cat /tmp/looper-rec.json)"
+
+REC_STATUS_OUT=$(bash "$PROJECT_DIR/packages/quality-gates/lib/status-report.sh" "$FIXTURE_REC")
+assert_contains "status-report: prints recommendations heading" "Recommendations:" "$REC_STATUS_OUT"
+assert_contains "status-report: mentions baseline" 'Consider enabling `"quality-gates".baseline`.' "$REC_STATUS_OUT"
+assert_contains "status-report: mentions scope-guard" 'Consider adding `scope-guard`' "$REC_STATUS_OUT"
+
+rm -rf "$FIXTURE_REC"
+
+# Stop feedback includes adaptive suggestions
+FIXTURE_REC2=$(make_fixture)
+install_package "$FIXTURE_REC2" "quality-gates"
+cat > "$FIXTURE_REC2/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "gates": [{ "name": "fail", "command": "false", "weight": 100 }]
+  }
+}
+EOF
+mkdir -p "$FIXTURE_REC2/.claude/state/quality-gates"
+echo '{"scores":[],"checks":{},"satisfied":false,"baseline":null}' > "$FIXTURE_REC2/.claude/state/quality-gates/state.json"
+jq -n '{ iteration: 3, max_iterations: 10, status: "running", files_touched: ["src/a.ts","src/b.ts","src/c.ts","src/d.ts","src/e.ts","src/f.ts","src/g.ts","src/h.ts"] }' > "$FIXTURE_REC2/.claude/state/kernel.json"
+
+REC2_STDOUT=$(mktemp); REC2_STDERR=$(mktemp)
+run_kernel "$FIXTURE_REC2" "Stop" '{"stop_hook_active":false}' "$REC2_STDOUT" "$REC2_STDERR"
+assert_eq "adaptive coaching: failing stop exits 2" "2" "$?"
+assert_contains "adaptive coaching: suggestions heading shown" "Suggestions:" "$(cat "$REC2_STDERR")"
+assert_contains "adaptive coaching: baseline suggestion shown" 'Consider enabling `"quality-gates".baseline`.' "$(cat "$REC2_STDERR")"
+assert_contains "adaptive coaching: scope-guard suggestion shown" 'Consider adding `scope-guard`' "$(cat "$REC2_STDERR")"
+
+rm -rf "$FIXTURE_REC2" "$REC2_STDOUT" "$REC2_STDERR"
+
 # ── Summary ─────────────────────────────────────────────
 
 TOTAL_TESTS=$((PASS + FAIL))

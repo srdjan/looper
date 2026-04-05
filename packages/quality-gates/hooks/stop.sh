@@ -5,6 +5,7 @@
 
 set -euo pipefail
 source "$LOOPER_HOOKS_DIR/pkg-utils.sh"
+source "$LOOPER_PKG_DIR/lib/recommendations.sh"
 
 CURRENT_PASS=$((LOOPER_ITERATION + 1))
 
@@ -30,12 +31,9 @@ TOTAL=$(echo "$GATES" | jq '[.[].weight] | add // 0')
 
 # Read baseline if captured at SessionStart
 BASELINE_JSON=$(pkg_state_read '.baseline // "null"')
-has_baseline() {
-  [ "$BASELINE_JSON" != "null" ] && [ "$BASELINE_JSON" != "" ]
-}
 baseline_status() {
   local gate_name="$1"
-  if has_baseline; then
+  if is_set "$BASELINE_JSON"; then
     echo "$BASELINE_JSON" | jq -r --arg n "$gate_name" '.[$n] // "unknown"'
   else
     echo "unknown"
@@ -48,6 +46,7 @@ PREEXISTING=""
 GATE_RESULTS=""
 CHECKS_PAIRS=""
 REQUIRED_FAILED=0
+PREEXISTING_COUNT=0
 
 while IFS=$'\t' read -r name cmd weight skip_if is_required run_when_json gate_timeout; do
   echo "  [Pass $CURRENT_PASS/$LOOPER_MAX_ITERATIONS] Running $name..." >&2
@@ -88,6 +87,7 @@ while IFS=$'\t' read -r name cmd weight skip_if is_required run_when_json gate_t
       fi
       append_preexisting_block "$name" "$(echo "$gate_out" | tail -10)"
       CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":false"
+      PREEXISTING_COUNT=$((PREEXISTING_COUNT + 1))
     else
       # New failure or no baseline: count normally
       if [ "$exit_code" -eq 124 ]; then
@@ -107,32 +107,23 @@ done < <(echo "$GATES" | jq -r '.[] | [.name, .command, (.weight | tostring), (.
 
 pkg_state_append '.scores' "$SCORE"
 pkg_state_write '.checks' "{${CHECKS_PAIRS}}"
+SCORES=$(pkg_state_read '.scores')
 
 # ── Session summary ───────────────────────────────────
 SESSIONS_LOG="$LOOPER_STATE_DIR/sessions.jsonl"
 SESSION_CURRENT="$LOOPER_STATE_DIR/session-current.json"
 
-# Count pre-existing vs introduced failures
-PREEXISTING_COUNT=0
-INTRODUCED_COUNT=0
-if has_baseline; then
-  PREEXISTING_COUNT=$(echo -e "$GATE_RESULTS" | grep -c '^ *~' || true)
-fi
-INTRODUCED_COUNT=$REQUIRED_FAILED
-
 write_session_summary() {
   local status="$1"
-  local scores
-  scores=$(pkg_state_read '.scores')
   jq -n --arg s "$status" \
     --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --argjson iter "$CURRENT_PASS" \
     --argjson max "$LOOPER_MAX_ITERATIONS" \
     --argjson score "$SCORE" \
     --argjson total "$TOTAL" \
-    --argjson req_failed "$INTRODUCED_COUNT" \
+    --argjson req_failed "$REQUIRED_FAILED" \
     --argjson preexisting "$PREEXISTING_COUNT" \
-    --argjson scores "$scores" \
+    --argjson scores "$SCORES" \
     '{status:$s,timestamp:$ts,iteration:$iter,max_iterations:$max,score:$score,total:$total,introduced_failures:$req_failed,preexisting_failures:$preexisting,score_history:$scores}'
 }
 
@@ -141,8 +132,6 @@ write_session_summary "in_progress" > "$SESSION_CURRENT"
 
 if [ "$REQUIRED_FAILED" -eq 0 ]; then
   pkg_state_write '.satisfied' 'true'
-
-  SCORES=$(pkg_state_read '.scores')
   echo "" >&2
   echo "══════════════════════════════════════════════" >&2
   if [ "$SCORE" -eq "$TOTAL" ]; then
@@ -176,8 +165,6 @@ if [ "$REQUIRED_FAILED" -eq 0 ]; then
   exit 0
 fi
 
-SCORES=$(pkg_state_read '.scores')
-
 echo "" >&2
 echo "══════════════════════════════════════════════" >&2
 echo "  QUALITY GATES - PASS $CURRENT_PASS/$LOOPER_MAX_ITERATIONS" >&2
@@ -188,7 +175,7 @@ echo -e "$GATE_RESULTS" >&2
 echo "----------------------------------------------" >&2
 
 # Legend for baseline-aware symbols
-if has_baseline; then
+if is_set "$BASELINE_JSON"; then
   echo "  v = pass  x = failed (you)  ~ = pre-existing  o = skipped" >&2
   echo "----------------------------------------------" >&2
 fi
@@ -227,6 +214,19 @@ if [ "$REMAINING" -le 2 ]; then
 elif [ "$REMAINING" -le "$COACHING_URGENCY" ]; then
   echo "" >&2
   echo "Budget: $REMAINING passes remaining. Be targeted." >&2
+fi
+
+RECOMMENDATIONS_JSON=$(recommendations_json \
+  "$SESSIONS_LOG" \
+  "$LOOPER_CONFIG" \
+  "$KERNEL_STATE" \
+  "$CURRENT_PASS" \
+  "$LOOPER_MAX_ITERATIONS" \
+  "$REQUIRED_FAILED")
+RECOMMENDATION_BLOCK=$(print_recommendations_block "$RECOMMENDATIONS_JSON" "Suggestions" 2)
+if [ -n "$RECOMMENDATION_BLOCK" ]; then
+  echo "" >&2
+  echo "$RECOMMENDATION_BLOCK" >&2
 fi
 
 echo "══════════════════════════════════════════════" >&2

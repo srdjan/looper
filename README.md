@@ -342,9 +342,9 @@ pkg_config '.gates'               # read own config from looper.json
 
 ## Session History
 
-Each completed session appends a one-line JSON summary to `.claude/state/sessions.jsonl`. Budget-exhausted sessions are promoted to the log on the next SessionStart. Run `/looper:status` to view session history, aggregate stats, and current config.
+Each completed session appends a one-line JSON summary to `.claude/state/sessions.jsonl`. Budget-exhausted sessions are promoted to the log on the next SessionStart. Run `/looper:status` to view session history, aggregate stats, current config, and recommendation hints.
 
-The log is local-only, gitignored, and contains: status, iterations, score, baseline savings, and timestamp.
+The log is local-only, gitignored, and contains: status, iterations, score, baseline savings, and timestamp. When recent history suggests a clear next move, Looper now surfaces lightweight recommendations such as enabling baseline, adjusting `max_iterations`, or adding `scope-guard`. The Stop hook also shows a short `Suggestions:` block during failing sessions when the signal is strong enough.
 
 >
 >#### Built By
