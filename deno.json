@@ -2,7 +2,9 @@
   "tasks": {
     "dev": "deno run -A jsr:@std/http/file-server ./site",
     "check": "deno fmt --check deno.json site/index.html",
-    "fmt": "deno fmt deno.json site/index.html"
+    "fmt": "deno fmt deno.json site/index.html",
+    "sdk:check": "deno check sdk/typescript/*.ts packages/sdk-hello/mod.ts",
+    "sdk:test": "deno test --allow-read --allow-write sdk/typescript"
   },
   "deploy": {
     "runtime": {

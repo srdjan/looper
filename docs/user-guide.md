@@ -548,19 +548,23 @@ run_with_timeout 30 bash -c "npm test"
 
 You can run multiple packages in the same loop. Each package evaluates independently and votes on whether to continue.
 
+The bundled `scope-guard` package is a natural companion to `quality-gates`. It prevents Claude from editing files outside a declared scope:
+
 ```json
 {
   "max_iterations": 15,
-  "packages": ["quality-gates", "security-audit"],
+  "packages": ["quality-gates", "scope-guard"],
   "quality-gates": {
     "gates": [...]
   },
-  "security-audit": {
-    "scan_command": "npm audit --audit-level=high",
-    "phase": "post"
+  "scope-guard": {
+    "blocked": ["package-lock.json", ".env*"],
+    "allowed": ["src/**/*", "tests/**/*"]
   }
 }
 ```
+
+`blocked` patterns are enforced immediately via PreToolUse: Claude's edit is denied before it happens. `allowed` patterns are checked at the Stop hook: if Claude edited files outside the allowed set, the loop continues until the violation is resolved.
 
 Rules:
 
@@ -569,7 +573,7 @@ Rules:
 - Packages run in array order within the same phase.
 - Core-phase packages run first. If any core package votes continue, post-phase packages are skipped entirely.
 
-The two-phase model prevents wasted work. A security audit should not run while the code still has type errors.
+The two-phase model prevents wasted work. scope-guard runs in the `post` phase, so it only evaluates after quality-gates passes. There is no point checking scope compliance if the code does not compile.
 
 ### Overriding a Bundled Package
 
@@ -590,7 +594,52 @@ Edit the local copy. The kernel will use it instead of the bundled version.
 
 ---
 
-## 10. Troubleshooting
+## 10. Baseline-Aware Gating
+
+Most real codebases have pre-existing issues: a flaky test, a lint rule nobody fixed, a type error in a file Claude will never touch. Without baseline awareness, Claude spends iteration budget trying to fix problems it did not create.
+
+Enable baseline capture to solve this:
+
+```json
+{
+  "quality-gates": {
+    "baseline": true,
+    "gates": [...]
+  }
+}
+```
+
+When `baseline` is `true`, all gate commands run at SessionStart before Claude makes any changes. The pass/fail result per gate is stored as a snapshot. On each Stop evaluation, the stop handler compares current results against the baseline:
+
+- A gate that was already failing at baseline and is still failing is marked `~` (pre-existing). It does not force another iteration and does not cost budget.
+- A gate that was passing at baseline but now fails is marked `x` (introduced). Claude must fix it.
+- When no baseline is captured (the default), all failures count normally.
+
+Claude's session context includes a "Pre-Existing Failures" section when baseline failures are detected, so it knows which gates to ignore from the start.
+
+The Stop report includes a legend when baseline is active:
+
+```
+v = pass  x = failed (you)  ~ = pre-existing  o = skipped
+```
+
+Pre-existing failures appear in a separate section labeled "not blocking" so Claude has context but does not try to fix them.
+
+An optional `baseline_timeout` (default 60 seconds) controls the per-gate time limit during baseline capture. Set it lower if your gates are fast and you want SessionStart to complete quickly:
+
+```json
+{
+  "quality-gates": {
+    "baseline": true,
+    "baseline_timeout": 30,
+    "gates": [...]
+  }
+}
+```
+
+---
+
+## 11. Troubleshooting
 
 ### Budget exhausted before gates pass
 
@@ -598,7 +647,7 @@ You will see: `IMPROVEMENT LOOP COMPLETE - BUDGET REACHED`.
 
 Check `.claude/state/kernel.json` for the score history and files touched. Common causes:
 
-- The test suite has pre-existing failures unrelated to Claude's work. Fix them before starting the session.
+- The test suite has pre-existing failures unrelated to Claude's work. Enable `"baseline": true` to let Claude ignore these, or fix them before starting the session.
 - The task is too broad. Break it into smaller pieces.
 - A gate command is flaky (passes sometimes, fails sometimes). Add `required: false` or fix the flakiness.
 
@@ -646,10 +695,6 @@ If the session starts without the "Improvement Loop Active" message, the hooks a
 claude plugin info looper
 ```
 
-### Double hook execution after migration
-
-If you see the loop context injected twice at session start, both the old settings.json hooks and the new plugin hooks are firing. Run `/looper:bootstrap` to clean up the old artifacts, or follow the steps in [migration.md](migration.md).
-
 ### State is stale from a previous session
 
 State resets on every SessionStart. If you see unexpected state, check that a new session is starting properly. The `"matcher": "new"` on the SessionStart hook ensures it only fires on new sessions.
@@ -664,7 +709,7 @@ The kernel recreates the directory on the next session.
 
 ---
 
-## 11. Design Decisions
+## 12. Design Decisions
 
 **Why shell scripts?** Claude Code hooks are command-based. Shell is the natural fit: no runtime dependencies, no build step, no package manager. The entire kernel is two files totaling ~500 lines.
 

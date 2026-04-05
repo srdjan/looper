@@ -742,6 +742,236 @@ assert_contains "context: substitutes max_iterations" "5 max iterations" "$(cat 
 assert_contains "context: includes custom rule" "never modify the API contract" "$(cat "$CTX_STDOUT")"
 rm -rf "$FIXTURE_CTX" "$CTX_STDOUT" "$CTX_STDERR"
 
+# ── baseline-aware gating ─────────────────────────────
+
+echo ""
+echo "-- baseline-aware gating -----------------"
+
+# Baseline capture stores pass/fail map
+FIXTURE_BL=$(make_fixture)
+install_package "$FIXTURE_BL" "quality-gates"
+cat > "$FIXTURE_BL/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "baseline": true,
+    "gates": [
+      { "name": "passing-gate", "command": "true", "weight": 50 },
+      { "name": "failing-gate", "command": "false", "weight": 50 }
+    ]
+  }
+}
+EOF
+
+BL_STDOUT=$(mktemp); BL_STDERR=$(mktemp)
+run_kernel "$FIXTURE_BL" "SessionStart" "" "$BL_STDOUT" "$BL_STDERR"
+assert_eq "baseline: session start exits 0" "0" "$?"
+assert_eq "baseline: passing gate recorded as pass" "pass" "$(jq -r '.baseline["passing-gate"]' "$FIXTURE_BL/.claude/state/quality-gates/state.json")"
+assert_eq "baseline: failing gate recorded as fail" "fail" "$(jq -r '.baseline["failing-gate"]' "$FIXTURE_BL/.claude/state/quality-gates/state.json")"
+assert_contains "baseline: session context mentions pre-existing" "Pre-Existing Failures" "$(cat "$BL_STDOUT")"
+assert_contains "baseline: session context names failing gate" "failing-gate" "$(cat "$BL_STDOUT")"
+
+# Stop with baseline: pre-existing failure does not force iteration
+jq -n '{ iteration: 0, max_iterations: 10, status: "running", files_touched: [] }' > "$FIXTURE_BL/.claude/state/kernel.json"
+# Reset scores but keep baseline
+jq '.scores = [] | .checks = {} | .satisfied = false' "$FIXTURE_BL/.claude/state/quality-gates/state.json" > /tmp/bl-reset.json && mv /tmp/bl-reset.json "$FIXTURE_BL/.claude/state/quality-gates/state.json"
+
+run_kernel "$FIXTURE_BL" "Stop" '{"stop_hook_active":false}' "$BL_STDOUT" "$BL_STDERR"
+assert_eq "baseline: pre-existing failure allows completion (exit 0)" "0" "$?"
+assert_contains "baseline: report uses ~ for pre-existing" "~ failing-gate" "$(cat "$BL_STDERR")"
+assert_contains "baseline: report shows pre-existing label" "pre-existing" "$(cat "$BL_STDERR")"
+
+rm -rf "$FIXTURE_BL" "$BL_STDOUT" "$BL_STDERR"
+
+# Baseline: introduced failure still forces iteration
+FIXTURE_BL2=$(make_fixture)
+install_package "$FIXTURE_BL2" "quality-gates"
+cat > "$FIXTURE_BL2/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "baseline": true,
+    "gates": [
+      { "name": "was-passing", "command": "false", "weight": 100 }
+    ]
+  }
+}
+EOF
+
+BL2_STDOUT=$(mktemp); BL2_STDERR=$(mktemp)
+# First run SessionStart with passing gate to capture baseline
+cat > "$FIXTURE_BL2/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "baseline": true,
+    "gates": [
+      { "name": "was-passing", "command": "true", "weight": 100 }
+    ]
+  }
+}
+EOF
+run_kernel "$FIXTURE_BL2" "SessionStart" "" "$BL2_STDOUT" "$BL2_STDERR"
+assert_eq "baseline-intro: baseline records pass" "pass" "$(jq -r '.baseline["was-passing"]' "$FIXTURE_BL2/.claude/state/quality-gates/state.json")"
+
+# Now change the gate to fail (simulating Claude breaking it)
+cat > "$FIXTURE_BL2/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "baseline": true,
+    "gates": [
+      { "name": "was-passing", "command": "false", "weight": 100 }
+    ]
+  }
+}
+EOF
+jq '.scores = [] | .checks = {} | .satisfied = false' "$FIXTURE_BL2/.claude/state/quality-gates/state.json" > /tmp/bl2-reset.json && mv /tmp/bl2-reset.json "$FIXTURE_BL2/.claude/state/quality-gates/state.json"
+
+run_kernel "$FIXTURE_BL2" "Stop" '{"stop_hook_active":false}' "$BL2_STDOUT" "$BL2_STDERR"
+assert_eq "baseline-intro: introduced failure exits 2" "2" "$?"
+assert_contains "baseline-intro: report uses x for introduced" "x was-passing" "$(cat "$BL2_STDERR")"
+
+rm -rf "$FIXTURE_BL2" "$BL2_STDOUT" "$BL2_STDERR"
+
+# No baseline (default): existing behavior preserved
+FIXTURE_BL3=$(make_fixture)
+install_package "$FIXTURE_BL3" "quality-gates"
+cat > "$FIXTURE_BL3/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "gates": [
+      { "name": "fail-gate", "command": "false", "weight": 100 }
+    ]
+  }
+}
+EOF
+jq -n '{ iteration: 0, max_iterations: 10, status: "running", files_touched: [] }' > "$FIXTURE_BL3/.claude/state/kernel.json"
+mkdir -p "$FIXTURE_BL3/.claude/state/quality-gates"
+echo '{"scores":[],"checks":{},"satisfied":false}' > "$FIXTURE_BL3/.claude/state/quality-gates/state.json"
+
+BL3_STDOUT=$(mktemp); BL3_STDERR=$(mktemp)
+run_kernel "$FIXTURE_BL3" "Stop" '{"stop_hook_active":false}' "$BL3_STDOUT" "$BL3_STDERR"
+assert_eq "no-baseline: failure exits 2 as before" "2" "$?"
+assert_contains "no-baseline: report uses x for failure" "x fail-gate" "$(cat "$BL3_STDERR")"
+
+rm -rf "$FIXTURE_BL3" "$BL3_STDOUT" "$BL3_STDERR"
+
+# ── sdk: package integration ───────────────────────────
+
+echo ""
+echo "-- sdk: package integration --------------"
+
+FIXTURE_SDK=$(make_fixture)
+cat > "$FIXTURE_SDK/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 3,
+  "packages": ["sdk-hello"],
+  "sdk-hello": {
+    "message": "SDK package online",
+    "succeed_after": 2
+  }
+}
+EOF
+
+SDK_STDOUT=$(mktemp); SDK_STDERR=$(mktemp)
+run_kernel "$FIXTURE_SDK" "SessionStart" "" "$SDK_STDOUT" "$SDK_STDERR"
+assert_eq "sdk: session start exits 0" "0" "$?"
+assert_contains "sdk: session start includes package message" "SDK package online" "$(cat "$SDK_STDOUT")"
+
+run_kernel "$FIXTURE_SDK" "Stop" '{"stop_hook_active":false}' "$SDK_STDOUT" "$SDK_STDERR"
+assert_eq "sdk: first stop exits 2" "2" "$?"
+assert_contains "sdk: first stop reports continue" "SDK hello: continue 1/2" "$(cat "$SDK_STDERR")"
+assert_eq "sdk: first stop increments iteration" "1" "$(jq -r '.iteration' "$FIXTURE_SDK/.claude/state/kernel.json")"
+
+run_kernel "$FIXTURE_SDK" "Stop" '{"stop_hook_active":false}' "$SDK_STDOUT" "$SDK_STDERR"
+assert_eq "sdk: second stop exits 0" "0" "$?"
+assert_contains "sdk: second stop reports done" "SDK hello: done 2/2" "$(cat "$SDK_STDERR")"
+assert_eq "sdk: second stop marks kernel complete" "complete" "$(jq -r '.status' "$FIXTURE_SDK/.claude/state/kernel.json")"
+assert_eq "sdk: state persists attempts" "2" "$(jq -r '.attempts' "$FIXTURE_SDK/.claude/state/sdk-hello/state.json")"
+
+rm -rf "$FIXTURE_SDK" "$SDK_STDOUT" "$SDK_STDERR"
+
+# ── scope-guard package ───────────────────────────────
+
+echo ""
+echo "-- scope-guard package -------------------"
+
+# scope-guard: uses bundled resolution (not install_package) so SDK relative imports work
+FIXTURE_SG=$(make_fixture)
+# Do NOT install_package - let kernel resolve via CLAUDE_PLUGIN_ROOT/packages/scope-guard
+cat > "$FIXTURE_SG/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["scope-guard"],
+  "scope-guard": {
+    "blocked": ["package-lock.json", ".env*"],
+    "allowed": ["src/**/*"]
+  }
+}
+EOF
+
+SG_STDOUT=$(mktemp); SG_STDERR=$(mktemp)
+
+# SessionStart: should inject scope rules
+run_kernel "$FIXTURE_SG" "SessionStart" "" "$SG_STDOUT" "$SG_STDERR"
+assert_eq "scope-guard: session start exits 0" "0" "$?"
+assert_contains "scope-guard: session start shows blocked" "Blocked files" "$(cat "$SG_STDOUT")"
+assert_contains "scope-guard: session start shows allowed" "Allowed files" "$(cat "$SG_STDOUT")"
+
+# PreToolUse: blocked file should be denied
+SG_EXIT=0
+run_kernel "$FIXTURE_SG" "PreToolUse" '{"tool_name":"Edit","tool_input":{"file_path":"package-lock.json"}}' "$SG_STDOUT" "$SG_STDERR" || SG_EXIT=$?
+assert_eq "scope-guard: PreToolUse blocks package-lock.json" "2" "$SG_EXIT"
+
+# PreToolUse: allowed file should pass
+run_kernel "$FIXTURE_SG" "PreToolUse" '{"tool_name":"Edit","tool_input":{"file_path":"src/app.ts"}}' "$SG_STDOUT" "$SG_STDERR"
+assert_eq "scope-guard: PreToolUse allows src/app.ts" "0" "$?"
+
+rm -rf "$FIXTURE_SG" "$SG_STDOUT" "$SG_STDERR"
+
+# scope-guard + quality-gates: multi-package composition (bundled resolution for both)
+FIXTURE_SG2=$(make_fixture)
+cat > "$FIXTURE_SG2/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates", "scope-guard"],
+  "quality-gates": {
+    "gates": [{ "name": "pass-gate", "command": "true", "weight": 100 }]
+  },
+  "scope-guard": {
+    "blocked": [],
+    "allowed": ["src/**/*"]
+  }
+}
+EOF
+jq -n '{ iteration: 0, max_iterations: 10, status: "running", files_touched: ["src/app.ts"] }' > "$FIXTURE_SG2/.claude/state/kernel.json"
+mkdir -p "$FIXTURE_SG2/.claude/state/quality-gates" "$FIXTURE_SG2/.claude/state/scope-guard"
+echo '{"scores":[],"checks":{},"satisfied":false}' > "$FIXTURE_SG2/.claude/state/quality-gates/state.json"
+
+SG2_STDOUT=$(mktemp); SG2_STDERR=$(mktemp)
+run_kernel "$FIXTURE_SG2" "Stop" '{"stop_hook_active":false}' "$SG2_STDOUT" "$SG2_STDERR"
+assert_eq "scope-guard+qg: in-scope files complete (exit 0)" "0" "$?"
+assert_contains "scope-guard+qg: quality-gates header" "quality-gates" "$(cat "$SG2_STDERR")"
+assert_contains "scope-guard+qg: scope-guard reports clean" "within scope" "$(cat "$SG2_STDERR")"
+
+# With out-of-scope file: post phase should force continue
+jq -n '{ iteration: 0, max_iterations: 10, status: "running", files_touched: ["src/app.ts", "package-lock.json"] }' > "$FIXTURE_SG2/.claude/state/kernel.json"
+echo '{"scores":[],"checks":{},"satisfied":false}' > "$FIXTURE_SG2/.claude/state/quality-gates/state.json"
+echo '{"violations":[]}' > "$FIXTURE_SG2/.claude/state/scope-guard/state.json"
+
+run_kernel "$FIXTURE_SG2" "Stop" '{"stop_hook_active":false}' "$SG2_STDOUT" "$SG2_STDERR"
+assert_eq "scope-guard+qg: out-of-scope file exits 2" "2" "$?"
+assert_contains "scope-guard+qg: reports violation" "outside allowed scope" "$(cat "$SG2_STDERR")"
+
+rm -rf "$FIXTURE_SG2" "$SG2_STDOUT" "$SG2_STDERR"
+
 # ── Summary ─────────────────────────────────────────────
 
 TOTAL_TESTS=$((PASS + FAIL))

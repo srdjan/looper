@@ -565,10 +565,6 @@ A check that takes more than a second per file will make editing feel sluggish. 
 
 Verify the plugin is installed and enabled: `claude plugin list` should show looper. Verify jq is installed: `jq --version`. Check that `.claude/looper.json` exists and is valid JSON: `jq empty .claude/looper.json`.
 
-### Double hook execution
-
-If you previously installed Looper via the old `install.sh` method and then installed the plugin, hooks may fire twice. Run `/looper:bootstrap` to detect and clean up old artifacts.
-
 ### Stale state
 
 State resets automatically on each new SessionStart. If you need to force a reset mid-session, delete the state directory: `rm -rf .claude/state/`.

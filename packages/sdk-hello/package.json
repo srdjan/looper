@@ -1,0 +1,6 @@
+{
+  "name": "sdk-hello",
+  "version": "0.1.0",
+  "description": "Reference SDK-authored Looper package",
+  "phase": "core"
+}

@@ -33,10 +33,6 @@ claude plugin uninstall looper@claude-plugins-official  # remove the plugin enti
 
 Project config (`.claude/looper.json`) and state (`.claude/state/`) are preserved. Delete them manually if no longer needed.
 
-## Migrating from install.sh
-
-If you previously installed via `install.sh`, run `/looper:bootstrap` after installing the plugin. It detects and cleans up old artifacts. See [docs/migration.md](docs/migration.md) for manual steps.
-
 ## Usage
 
 ```bash
@@ -86,6 +82,27 @@ Top-level keys `max_iterations` and `packages` are kernel config. Everything und
 | `timeout` | 300 | Seconds before the gate command is killed |
 | `enabled` | `true` | Set `false` to disable without removing |
 
+### Baseline-Aware Gating
+
+Enable baseline capture to distinguish pre-existing failures from failures Claude introduces:
+
+```json
+{
+  "quality-gates": {
+    "baseline": true,
+    "baseline_timeout": 60,
+    "gates": [...]
+  }
+}
+```
+
+When `baseline` is `true`, all gates run at SessionStart before Claude makes any changes. The results are stored as a pass/fail snapshot. On each Stop evaluation, failures that match the baseline are marked as pre-existing (`~`) and do not force another iteration. Only new failures Claude introduces (`x`) cost iteration budget.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `baseline` | `false` | Enable baseline capture at session start |
+| `baseline_timeout` | 60 | Per-gate timeout in seconds during baseline capture |
+
 ### Post-Edit Checks
 
 | Field | Default | Description |
@@ -118,6 +135,35 @@ Top-level keys `max_iterations` and `packages` are kernel config. Everything und
   }
 }
 ```
+
+## Bundled Packages
+
+### quality-gates
+
+The default package. Runs typecheck, lint, test, and coverage gates after each response. Auto-detected per stack. See [Configuration](#configuration) above.
+
+### scope-guard
+
+Prevents Claude from editing files outside a declared scope. Uses PreToolUse to block edits to protected files in real time, and Stop (post phase) to report scope compliance.
+
+```json
+{
+  "packages": ["quality-gates", "scope-guard"],
+  "scope-guard": {
+    "blocked": ["package-lock.json", ".env*", "*.config.js"],
+    "allowed": ["src/**/*", "tests/**/*"]
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `blocked` | string[] | Glob patterns for files Claude must never edit. Edits are blocked in real time via PreToolUse. |
+| `allowed` | string[] | Glob patterns for files Claude may edit. Out-of-scope edits are flagged at Stop. |
+
+`blocked` patterns are enforced immediately: Claude's edit is denied before it happens. `allowed` patterns are checked at the end: if Claude edited files outside the allowed set, the loop continues until the violation is resolved.
+
+scope-guard runs in the `post` phase, so it only evaluates after quality-gates passes.
 
 ## Architecture
 
@@ -175,9 +221,9 @@ Multiple packages run in declaration order. The kernel aggregates their stop/con
 
 ```json
 {
-  "packages": ["quality-gates", "security-audit"],
+  "packages": ["quality-gates", "scope-guard"],
   "quality-gates": { "gates": [...] },
-  "security-audit": { "scan_command": "npm audit", "phase": "post" }
+  "scope-guard": { "blocked": ["package-lock.json", ".env*"], "allowed": ["src/**/*"] }
 }
 ```
 

@@ -18,13 +18,33 @@ append_failure_block() {
   FAILURES="${FAILURES}\n-- ${heading} --\n${body}\n"
 }
 
+append_preexisting_block() {
+  local heading="$1" body="$2"
+  PREEXISTING="${PREEXISTING}\n-- ${heading} --\n${body}\n"
+}
+
 export LOOPER_HOOKS_DIR
 
 GATES=$(pkg_config '.gates // [] | [.[] | select(.enabled != false)]')
 TOTAL=$(echo "$GATES" | jq '[.[].weight] | add // 0')
 
+# Read baseline if captured at SessionStart
+BASELINE_JSON=$(pkg_state_read '.baseline // "null"')
+has_baseline() {
+  [ "$BASELINE_JSON" != "null" ] && [ "$BASELINE_JSON" != "" ]
+}
+baseline_status() {
+  local gate_name="$1"
+  if has_baseline; then
+    echo "$BASELINE_JSON" | jq -r --arg n "$gate_name" '.[$n] // "unknown"'
+  else
+    echo "unknown"
+  fi
+}
+
 SCORE=0
 FAILURES=""
+PREEXISTING=""
 GATE_RESULTS=""
 CHECKS_PAIRS=""
 REQUIRED_FAILED=0
@@ -57,16 +77,30 @@ while IFS=$'\t' read -r name cmd weight skip_if is_required run_when_json gate_t
     CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":true"
   else
     exit_code=$?
-    if [ "$exit_code" -eq 124 ]; then
-      append_gate_result "x" "$name" "timed out (${gate_timeout}s)" "0" "$weight"
-      append_failure_block "$name" "Command timed out after ${gate_timeout} seconds"
+    bl_status=$(baseline_status "$name")
+
+    if [ "$bl_status" = "fail" ]; then
+      # Pre-existing failure: don't count toward required failures, award no points
+      if [ "$exit_code" -eq 124 ]; then
+        append_gate_result "~" "$name" "pre-existing (timed out)" "0" "$weight"
+      else
+        append_gate_result "~" "$name" "pre-existing" "0" "$weight"
+      fi
+      append_preexisting_block "$name" "$(echo "$gate_out" | tail -10)"
+      CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":false"
     else
-      append_gate_result "x" "$name" "failed" "0" "$weight"
-      append_failure_block "$name" "$(echo "$gate_out" | tail -20)"
-    fi
-    CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":false"
-    if [ "$is_required" = "true" ]; then
-      REQUIRED_FAILED=$((REQUIRED_FAILED + 1))
+      # New failure or no baseline: count normally
+      if [ "$exit_code" -eq 124 ]; then
+        append_gate_result "x" "$name" "timed out (${gate_timeout}s)" "0" "$weight"
+        append_failure_block "$name" "Command timed out after ${gate_timeout} seconds"
+      else
+        append_gate_result "x" "$name" "failed" "0" "$weight"
+        append_failure_block "$name" "$(echo "$gate_out" | tail -20)"
+      fi
+      CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":false"
+      if [ "$is_required" = "true" ]; then
+        REQUIRED_FAILED=$((REQUIRED_FAILED + 1))
+      fi
     fi
   fi
 done < <(echo "$GATES" | jq -r '.[] | [.name, .command, (.weight | tostring), (.skip_if_missing // "null"), (if .required == false then "false" else "true" end), (if .run_when then (.run_when | tojson) else "null" end), (.timeout // "null" | tostring)] | @tsv')
@@ -98,6 +132,12 @@ if [ "$REQUIRED_FAILED" -eq 0 ]; then
     echo -e "$FAILURES" >&2
   fi
 
+  if [ -n "$PREEXISTING" ]; then
+    echo "" >&2
+    echo "Pre-existing failures (not your responsibility):" >&2
+    echo -e "$PREEXISTING" >&2
+  fi
+
   exit 0
 fi
 
@@ -112,6 +152,12 @@ echo "----------------------------------------------" >&2
 echo -e "$GATE_RESULTS" >&2
 echo "----------------------------------------------" >&2
 
+# Legend for baseline-aware symbols
+if has_baseline; then
+  echo "  v = pass  x = failed (you)  ~ = pre-existing  o = skipped" >&2
+  echo "----------------------------------------------" >&2
+fi
+
 # Coaching
 IFS=$'\t' read -r COACHING_FAILURE COACHING_URGENCY COACHING_BUDGET < <(
   pkg_config ' | [.coaching.on_failure // "null", (.coaching.urgency_at // 5 | tostring), .coaching.on_budget_low // "null"] | @tsv' 2>/dev/null || echo "null	5	null"
@@ -124,6 +170,12 @@ if [ -n "$FAILURES" ]; then
     echo "FIX THESE SPECIFIC ISSUES:" >&2
   fi
   echo -e "$FAILURES" >&2
+fi
+
+if [ -n "$PREEXISTING" ]; then
+  echo "" >&2
+  echo "Pre-existing failures (not blocking - do NOT fix these):" >&2
+  echo -e "$PREEXISTING" >&2
 fi
 
 REMAINING=$((LOOPER_MAX_ITERATIONS - CURRENT_PASS))

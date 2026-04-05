@@ -8,10 +8,38 @@ source "$LOOPER_HOOKS_DIR/pkg-utils.sh"
 pkg_state_write '.scores' '[]'
 pkg_state_write '.checks' '{}'
 pkg_state_write '.satisfied' 'false'
+pkg_state_write '.baseline' 'null'
 
 GATES=$(pkg_config '.gates // [] | [.[] | select(.enabled != false)]')
 TOTAL=$(echo "$GATES" | jq '[.[].weight] | add // 0')
 GATE_LIST=$(echo "$GATES" | jq -r '.[] | "  - \(.name)  (\(.weight)pts) \(if .required == false then "[optional]" else "[required]" end) - \(.command)"')
+
+# ── Baseline capture ───────────────────────────────────
+BASELINE_ENABLED=$(pkg_config '.baseline // false' 2>/dev/null || echo "false")
+BASELINE_TIMEOUT=$(pkg_config '.baseline_timeout // 60' 2>/dev/null || echo "60")
+
+if [ "$BASELINE_ENABLED" = "true" ]; then
+  BASELINE_PAIRS=""
+  BASELINE_FAILURES=""
+
+  while IFS=$'\t' read -r name cmd skip_if gate_timeout; do
+    is_set "$gate_timeout" || gate_timeout="$BASELINE_TIMEOUT"
+
+    if is_set "$skip_if" && [ ! -e "$skip_if" ]; then
+      BASELINE_PAIRS="${BASELINE_PAIRS:+${BASELINE_PAIRS},}\"$name\":\"skip\""
+      continue
+    fi
+
+    if run_with_timeout "$gate_timeout" bash -c "$cmd" >/dev/null 2>&1; then
+      BASELINE_PAIRS="${BASELINE_PAIRS:+${BASELINE_PAIRS},}\"$name\":\"pass\""
+    else
+      BASELINE_PAIRS="${BASELINE_PAIRS:+${BASELINE_PAIRS},}\"$name\":\"fail\""
+      BASELINE_FAILURES="${BASELINE_FAILURES}  ~ $name (pre-existing failure)\n"
+    fi
+  done < <(echo "$GATES" | jq -r '.[] | [.name, .command, (.skip_if_missing // "null"), (.timeout // "null" | tostring)] | @tsv')
+
+  pkg_state_write '.baseline' "{${BASELINE_PAIRS}}"
+fi
 
 cat <<CONTEXT
 ## Quality Gates
@@ -27,6 +55,18 @@ reported - don't rewrite unrelated code.
 
 Budget: $LOOPER_MAX_ITERATIONS passes total.
 CONTEXT
+
+if [ "$BASELINE_ENABLED" = "true" ] && [ -n "$BASELINE_FAILURES" ]; then
+  cat <<BASELINE
+
+## Pre-Existing Failures (Baseline)
+
+The following gates were already failing before you started. These will NOT
+block you or cost iteration budget. Focus only on failures you introduce.
+
+$(echo -e "$BASELINE_FAILURES")
+BASELINE
+fi
 
 CONTEXT_LINES=$(pkg_config '.context // [] | .[]' 2>/dev/null || true)
 if [ -n "$CONTEXT_LINES" ]; then
