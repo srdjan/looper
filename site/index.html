@@ -185,7 +185,7 @@
           width: var(--content);
           margin: 0 auto;
           display: grid;
-          grid-template-columns: minmax(0, 0.95fr) minmax(320px, 0.9fr);
+          grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr);
           gap: clamp(2rem, 4vw, 4.5rem);
           align-items: end;
           min-height: calc(100svh - 4.5rem);
@@ -194,15 +194,7 @@
 
         .section {
           position: relative;
-          padding: clamp(4.5rem, 9vw, 7.5rem) 0;
-        }
-
-        .section.split .section-inner,
-        .section.architecture .section-inner,
-        .section.cta .section-inner {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: clamp(1.8rem, 4vw, 4.2rem);
+          padding: clamp(3.5rem, 7vw, 5.5rem) 0;
         }
 
         .footer {
@@ -227,9 +219,6 @@
           }
 
           .hero-inner,
-          .section.split .section-inner,
-          .section.architecture .section-inner,
-          .section.cta .section-inner,
           .footer-inner {
             grid-template-columns: 1fr;
           }
@@ -264,11 +253,6 @@
           box-shadow: 0 10px 30px rgba(2, 39, 58, 0.11);
           display: grid;
           place-items: center;
-        }
-
-        .brand-mark img {
-          width: 1.55rem;
-          height: 1.55rem;
         }
 
         .brand-mark svg {
@@ -314,24 +298,23 @@
         .hero-copy h1 {
           margin-top: 1rem;
           font-family: var(--font-display);
-          font-size: clamp(3.3rem, 7.3vw, 7rem);
-          line-height: 0.94;
+          font-size: clamp(2.2rem, 4.5vw, 3.6rem);
+          line-height: 1.08;
           font-weight: 700;
-          letter-spacing: -0.05em;
-          max-width: 8.3ch;
+          letter-spacing: -0.035em;
+          max-width: 20ch;
           color: var(--murky-depths);
         }
 
         .hero-copy h1 em {
-          display: inline-block;
           color: var(--philodendron);
           font-style: normal;
         }
 
         .lede {
           margin-top: 1.25rem;
-          max-width: 34rem;
-          font-size: 1.12rem;
+          max-width: 38rem;
+          font-size: 1.08rem;
         }
 
         .hero-actions {
@@ -519,202 +502,88 @@
           color: var(--apricot-glow);
         }
 
-        .section-label {
-          display: block;
-          margin-bottom: 0.9rem;
-          color: rgba(2, 39, 58, 0.56);
-          font-size: 0.82rem;
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-        }
+        /* ── How it works strip ─────────────── */
 
-        .section h2 {
-          font-family: var(--font-display);
-          font-size: clamp(2.4rem, 4.7vw, 4.3rem);
-          line-height: 0.96;
-          letter-spacing: -0.04em;
-          color: var(--murky-depths);
-          max-width: 9.5ch;
-        }
-
-        .section.intro {
-          background:
-            linear-gradient(
-              180deg,
-              rgba(255, 245, 238, 0.24),
-              rgba(255, 245, 238, 0.42)
-            ),
-            linear-gradient(
-            90deg,
-            rgba(255, 255, 255, 0),
-            rgba(195, 220, 213, 0.12)
-          );
-        }
-
-        .intro-grid {
+        .how-strip {
           display: grid;
-          grid-template-columns: 1.15fr 0.85fr;
-          gap: clamp(1.7rem, 4vw, 4rem);
-          align-items: start;
-        }
-
-        .intro-copy p {
-          max-width: 40rem;
-          margin-top: 1.05rem;
-          font-size: 1.05rem;
-        }
-
-        .statement {
-          padding-top: 0.35rem;
-          font-family: var(--font-display);
-          font-size: clamp(1.9rem, 3vw, 2.9rem);
-          line-height: 1.02;
-          letter-spacing: -0.04em;
-          color: var(--philodendron);
-        }
-
-        .workflow-strip {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
+          grid-template-columns: repeat(3, 1fr);
           gap: 1px;
-          margin-top: 2.2rem;
           background: rgba(2, 39, 58, 0.11);
         }
 
-        .workflow-step {
-          padding: 1.4rem 1.2rem 1.5rem;
-          min-height: 15rem;
+        .how-step {
+          padding: 1.6rem 1.4rem;
           display: flex;
           flex-direction: column;
-          justify-content: space-between;
+          gap: 0.5rem;
         }
 
-        .workflow-step:nth-child(1) {
+        .how-step:nth-child(1) {
           background: var(--surface);
         }
-        .workflow-step:nth-child(2) {
+        .how-step:nth-child(2) {
           background: rgba(195, 220, 213, 0.62);
         }
-        .workflow-step:nth-child(3) {
+        .how-step:nth-child(3) {
           background: rgba(255, 245, 238, 0.76);
         }
 
-        .workflow-step strong {
-          display: block;
-          font-size: 0.84rem;
+        .how-step strong {
+          font-size: 0.82rem;
           text-transform: uppercase;
           letter-spacing: 0.08em;
-          color: rgba(2, 39, 58, 0.54);
+          color: rgba(2, 39, 58, 0.5);
         }
 
-        .workflow-step h3 {
-          margin-top: 1rem;
-          font-family: var(--font-display);
-          font-size: 1.8rem;
-          line-height: 0.98;
-          letter-spacing: -0.03em;
+        .how-step p {
+          font-size: 0.98rem;
+          max-width: 28rem;
         }
 
-        .workflow-step p {
-          margin-top: 2.8rem;
-        }
+        /* ── Install section ────────────────── */
 
-        .surface {
-          position: relative;
-          padding: clamp(1.4rem, 2vw, 2rem);
-          border-radius: 1.8rem;
-          background: var(--surface);
-          box-shadow: inset 0 0 0 1px var(--surface-border);
-        }
-
-        .surface.dark {
-          background: linear-gradient(
-            180deg,
-            rgba(2, 39, 58, 0.98),
-            rgba(2, 39, 58, 0.93)
-          );
-          color: var(--seashell);
-          box-shadow: var(--shadow);
-        }
-
-        .surface.dark p,
-        .surface.dark .small-mono {
-          color: rgba(255, 245, 238, 0.7);
-        }
-
-        .stack-list,
-        .package-list,
-        .tech-list {
-          list-style: none;
+        .install-section {
           display: grid;
-          gap: 0.9rem;
-          margin-top: 1.3rem;
+          grid-template-columns: 1fr 1fr;
+          gap: clamp(1.8rem, 4vw, 4rem);
+          align-items: center;
         }
 
-        .stack-list li,
-        .package-list li,
-        .tech-list li {
-          display: flex;
-          justify-content: space-between;
-          gap: 1rem;
-          padding-bottom: 0.7rem;
-          border-bottom: 1px solid var(--surface-border);
-        }
-
-        .surface.dark .stack-list li,
-        .surface.dark .package-list li {
-          border-bottom-color: rgba(255, 245, 238, 0.12);
-        }
-
-        .stack-list span:last-child,
-        .package-list span:last-child,
-        .tech-list span:last-child {
-          color: rgba(2, 39, 58, 0.55);
-          font-family: var(--font-mono);
-          font-size: 0.88rem;
-          text-align: right;
-        }
-
-        .surface.dark .stack-list span:last-child,
-        .surface.dark .package-list span:last-child {
-          color: rgba(255, 245, 238, 0.58);
-        }
-
-        .config-block,
-        .architecture-block {
-          margin-top: 1.4rem;
-          padding: 1.2rem 1.15rem;
-          border-radius: 1.2rem;
-          font-size: 0.78rem;
-          line-height: 1.65;
-          white-space: pre;
-          overflow-x: auto;
-        }
-
-        .config-block {
-          background: rgba(2, 39, 58, 0.08);
+        .install-copy h2 {
+          font-family: var(--font-display);
+          font-size: clamp(2rem, 3.8vw, 3.2rem);
+          line-height: 1;
+          letter-spacing: -0.04em;
           color: var(--murky-depths);
         }
 
-        .architecture-block {
-          background: rgba(255, 245, 238, 0.06);
-        }
-
-        .cta-copy {
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-        }
-
-        .cta-copy p {
+        .install-copy p {
+          margin-top: 0.8rem;
           max-width: 32rem;
-          margin-top: 1rem;
         }
 
-        .cta-install {
+        .install-links {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 1rem;
+          margin-top: 1.2rem;
+          color: rgba(2, 39, 58, 0.72);
+          font-size: 0.95rem;
+        }
+
+        .install-links a {
+          border-bottom: 1px solid rgba(2, 39, 58, 0.2);
+          padding-bottom: 0.15rem;
+          transition: border-color 180ms ease;
+        }
+
+        .install-links a:hover {
+          border-color: var(--ink);
+        }
+
+        .install-card {
           display: grid;
           gap: 1rem;
-          align-content: center;
           padding: clamp(1.4rem, 3vw, 2.1rem);
           border-radius: 1.8rem;
           background: linear-gradient(
@@ -726,14 +595,14 @@
           box-shadow: var(--shadow);
         }
 
-        .cta-install .install-label {
+        .install-card .install-label {
           font-size: 0.82rem;
           text-transform: uppercase;
           letter-spacing: 0.08em;
           color: rgba(2, 39, 58, 0.56);
         }
 
-        .cta-install code {
+        .install-card code {
           display: inline-block;
           width: fit-content;
           max-width: 100%;
@@ -748,17 +617,9 @@
           font-size: 0.76rem;
         }
 
-        .cta-links {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 1rem;
-          color: rgba(2, 39, 58, 0.72);
-        }
-
-        .small-mono {
-          font-family: var(--font-mono);
-          font-size: 0.82rem;
-          letter-spacing: 0.02em;
+        .install-card .install-note {
+          font-size: 0.92rem;
+          color: rgba(2, 39, 58, 0.6);
         }
 
         @media (max-width: 900px) {
@@ -766,19 +627,16 @@
             display: none;
           }
 
-          .hero-copy h1,
-          .section h2,
-          .statement {
+          .hero-copy h1 {
             max-width: none;
           }
 
-          .intro-grid,
-          .workflow-strip {
+          .how-strip {
             grid-template-columns: 1fr;
           }
 
-          .workflow-step {
-            min-height: auto;
+          .install-section {
+            grid-template-columns: 1fr;
           }
 
           .hero-stage {
@@ -890,15 +748,15 @@
           <div class="hero-copy">
             <div class="reveal is-visible">
               <span class="eyebrow"
-              >Claude Code / quality loop / package-based</span>
+              >Claude Code plugin</span>
             </div>
 
             <h1 class="reveal is-visible delay-1">
-              Claude stops when it thinks it's done. <em>Looper keeps it going until it's actually done.</em>
+              Claude Code stops when it thinks it's done. <em>Looper keeps it going until it's actually done.</em>
             </h1>
 
             <p class="lede reveal is-visible delay-2">
-              It's a native plugin that runs your quality checks - build, lint,
+              A native plugin that runs your quality checks - build, lint,
               tests - every time Claude says "finished," and pushes it back
               with the failures if anything is red. The code you get compiles,
               passes lint, and has green tests, because Claude kept iterating
@@ -916,8 +774,6 @@
 
             <div class="hero-install reveal is-visible delay-3">
               <span>Requires <code>jq</code></span>
-              <span>Local dev: <code>claude --plugin-dir
-                  /path/to/looper</code></span>
             </div>
           </div>
 
@@ -936,12 +792,12 @@
                 <span>Looper active</span>
               </div>
               <div class="terminal-code">
-                <span class="terminal-pass">v typecheck</span> 30/30
-                <span class="terminal-pass">v lint</span> 20/20
-                <span class="terminal-fail">x test</span> 0/30 FAIL
-                src/user.test.ts
-                <span class="terminal-warn">o coverage</span> -/20 skipped Fix
-                the specific failure. 8 passes remaining.
+<span class="terminal-pass">v typecheck</span> 30/30
+<span class="terminal-pass">v lint</span> 20/20
+<span class="terminal-fail">x test</span> 0/30 FAIL
+  src/user.test.ts
+<span class="terminal-warn">o coverage</span> -/20 skipped
+Fix the specific failure. 8 passes remaining.
               </div>
             </div>
           </div>
@@ -949,205 +805,53 @@
       </section>
 
       <main>
-        <section class="section intro">
+        <section class="section">
           <div class="section-inner">
-            <div class="intro-grid">
-              <div class="intro-copy reveal">
-                <span class="section-label">Why it exists</span>
-                <h2>Stop acting as Claude's human quality gate.</h2>
-                <p>
-                  The usual loop is wasteful: Claude writes code, you run the
-                  checks, you paste the failure, Claude fixes one thing and
-                  breaks another. Looper turns that into an internal loop
-                  instead of a handoff.
-                </p>
-                <p>
-                  When Claude tries to stop, Looper runs typecheck, lint, test,
-                  coverage, or whatever your project demands. If a gate fails,
-                  Claude sees the failure output immediately and keeps going.
-                </p>
-              </div>
-
-              <div class="statement reveal delay-1">
-                One install.<br>
-                Real commands.<br>
-                Fewer false finishes.
-              </div>
-            </div>
-
-            <div class="workflow-strip reveal delay-2">
-              <article class="workflow-step">
-                <div>
-                  <strong>01 / Edit</strong>
-                  <h3>Track every touched file.</h3>
-                </div>
-                <p>
-                  Looper watches Claude's edits and runs fast local checks after
-                  each write, so problems surface while the change is still
-                  warm.
-                </p>
+            <div class="how-strip reveal">
+              <article class="how-step">
+                <strong>Edit</strong>
+                <p>Tracks every file Claude touches. Runs fast per-file checks after each write.</p>
               </article>
-              <article class="workflow-step">
-                <div>
-                  <strong>02 / Evaluate</strong>
-                  <h3>Run your actual gates.</h3>
-                </div>
-                <p>
-                  Typecheck, lint, test, coverage. Every gate is just a shell
-                  command, so the loop matches the real repository instead of a
-                  demo policy.
-                </p>
+              <article class="how-step">
+                <strong>Evaluate</strong>
+                <p>Runs your actual gates at stop time: typecheck, lint, test, coverage. Shell commands, not stubs.</p>
               </article>
-              <article class="workflow-step">
-                <div>
-                  <strong>03 / Continue</strong>
-                  <h3>Push Claude back with specifics.</h3>
-                </div>
-                <p>
-                  Failure output is injected into the session. Claude gets
-                  another pass with concrete errors, not vague encouragement.
-                </p>
+              <article class="how-step">
+                <strong>Continue</strong>
+                <p>Feeds failure output back into the session. Claude gets another pass with concrete errors.</p>
               </article>
             </div>
           </div>
         </section>
 
-        <section class="section split">
+        <section class="section" id="install">
           <div class="section-inner">
-            <div class="surface reveal">
-              <span class="section-label">Auto-configuration</span>
-              <h2>Detect the stack. Start from the right preset.</h2>
-              <p style="margin-top: 1rem">
-                On first session start, Looper checks marker files and writes a
-                matching <code>.claude/looper.json</code>. You get a working
-                loop before you ever open a config file.
-              </p>
-
-              <ul class="stack-list">
-                <li>
-                  <span>TypeScript + ESLint</span><span>tsc / eslint / prettier
-                    / jest</span>
-                </li>
-                <li>
-                  <span>TypeScript + Biome</span><span>tsc / biome /
-                    vitest</span>
-                </li>
-                <li><span>Deno</span><span>check / lint / test / fmt</span></li>
-                <li><span>Python</span><span>mypy / ruff / pytest</span></li>
-                <li><span>Go</span><span>build / vet / test</span></li>
-                <li>
-                  <span>Rust</span><span>check / clippy / test / fmt</span>
-                </li>
-              </ul>
-            </div>
-
-            <div class="surface dark reveal delay-1">
-              <span class="section-label">Claude context</span>
-              <h2 style="color: var(--seashell)">
-                What the model actually sees when the loop bites.
-              </h2>
-              <p style="margin-top: 1rem">
-                Looper does not say “something failed.” It sends back the real
-                failing output, the current score, and the remaining budget.
-              </p>
-
-              <div class="architecture-block">
-                QUALITY GATES -- PASS 2/10 Score: 80/100 History: [50, 80]
-                ---------------------------------- v typecheck 30/30 v lint
-                20/20 x test 0/30 o coverage -/20
-                ---------------------------------- FAIL src/user.test.ts x
-                should validate email format Expected: true Received: false
-                ---------------------------------- Fix the specific failure. 8
-                passes remaining.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="section architecture">
-          <div class="section-inner">
-            <div class="surface dark reveal">
-              <span class="section-label">Package system</span>
-              <h2 style="color: var(--seashell)">
-                Quality gates are only the opening move.
-              </h2>
-              <p style="margin-top: 1rem">
-                The kernel is intentionally small. Packages define the behavior,
-                so the same loop mechanics can drive TDD cycles, security
-                audits, or documentation checks.
-              </p>
-
-              <ul class="package-list">
-                <li>
-                  <span>session-start.sh</span><span>inject project
-                    context</span>
-                </li>
-                <li>
-                  <span>pre-tool-use.sh</span><span>filter or annotate
-                    edits</span>
-                </li>
-                <li>
-                  <span>post-tool-use.sh</span><span>run fast file checks</span>
-                </li>
-                <li><span>stop.sh</span><span>vote done or continue</span></li>
-              </ul>
-            </div>
-
-            <div class="surface reveal delay-1">
-              <span class="section-label">Under the hood</span>
-              <h2>A calm kernel with real constraints.</h2>
-              <p style="margin-top: 1rem">
-                Looper is built around four Claude Code hooks, shared state, and
-                hard stop conditions that prevent infinite churn. It stays
-                simple enough to debug because the moving parts are plain shell
-                and <code>jq</code>.
-              </p>
-
-              <div class="config-block">
-                SessionStart init state, inject gate list PreToolUse track
-                touched files, enforce budget PostToolUse run per-file checks
-                after edits Stop evaluate gates, score, continue or finish
-                Circuit breakers: - re-entry guard - iteration budget -
-                two-phase stop model
+            <div class="install-section reveal">
+              <div class="install-copy">
+                <h2>One command to start. Docs when you need them.</h2>
+                <p>
+                  Auto-detects your stack on first run. Supports Rust, Go,
+                  Python, Deno, and TypeScript out of the box.
+                </p>
+                <div class="install-links">
+                  <a href="https://github.com/srdjan/looper">GitHub</a>
+                  <a
+                    href="https://github.com/srdjan/looper/blob/main/docs/user-guide.md"
+                  >User Guide</a>
+                  <a
+                    href="https://github.com/srdjan/looper/blob/main/docs/architecture.md"
+                  >Architecture</a>
+                  <a
+                    href="https://github.com/srdjan/looper/blob/main/docs/mini-book.md"
+                  >Mini-Book</a>
+                </div>
               </div>
 
-              <p class="small-mono" style="margin-top: 1rem">
-                No build step. No npm dependency chain. Just a loop you can
-                inspect end to end.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section class="section cta" id="install">
-          <div class="section-inner">
-            <div class="cta-copy reveal">
-              <span class="section-label">Install</span>
-              <h2>Get code that survives contact with your repository.</h2>
-              <p>
-                Looper is for teams and solo builders who want Claude to keep
-                working until the code clears real gates. Install once, tune
-                when needed, and stop babysitting the finish line.
-              </p>
-              <div class="cta-links" style="margin-top: 1.5rem">
-                <a href="https://github.com/srdjan/looper">GitHub</a>
-                <a
-                  href="https://github.com/srdjan/looper/blob/main/docs/user-guide.md"
-                >Docs</a>
-                <a
-                  href="https://github.com/srdjan/looper/blob/main/docs/architecture.md"
-                >Architecture</a>
+              <div class="install-card">
+                <span class="install-label">Install</span>
+                <code>claude plugin install looper@claude-plugins-official</code>
+                <span class="install-note">Or: <code>claude --plugin-dir /path/to/looper</code></span>
               </div>
-            </div>
-
-            <div class="cta-install reveal delay-1">
-              <span class="install-label"
-              >One command. Then Claude keeps going.</span>
-              <code>claude plugin install looper@claude-plugins-official</code>
-              <p>
-                Need custom gates? Edit <code>.claude/looper.json</code> or run
-                <code>/looper:looper-config</code> for guided setup.
-              </p>
             </div>
           </div>
         </section>
@@ -1158,8 +862,7 @@
           <span>Built by <a href="https://github.com/srdjan"
             >Srdjan Strbanovic</a>. Open source under MIT.</span>
           <span>Palette by <a href="https://x.com/AlexCristache"
-            >AlexCristache</a>. Looper makes Claude finish what it
-            starts.</span>
+            >AlexCristache</a>.</span>
         </div>
       </footer>
     </div>
