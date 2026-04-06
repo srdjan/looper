@@ -317,7 +317,7 @@ This prevents Claude from spending its remaining budget on refactoring or improv
 
 ## Chapter 7: The Kernel
 
-The kernel is about 400 lines of bash that manage state, dispatch events to packages, and enforce safety constraints. It knows nothing about quality gates, scoring, or specific tools. All domain logic lives in packages.
+The kernel is about 500 lines of bash that manage state, dispatch events to packages, and enforce safety constraints. It knows nothing about quality gates, scoring, or specific tools. All domain logic lives in packages.
 
 ### State
 
@@ -529,7 +529,7 @@ Claude sees both packages' feedback and knows that quality-gates is satisfied bu
 
 ### Why Bash
 
-Claude Code hooks execute shell commands. Looper's kernel could have been written in Python or Node, but that would add a runtime dependency to the dispatcher itself. Bash and jq are available on every machine where Claude Code runs. The kernel is about 400 lines. No build step, no package manager, no transpilation for the control layer. You can read the source and modify it in minutes.
+Claude Code hooks execute shell commands. Looper's kernel could have been written in Python or Node, but that would add a runtime dependency to the dispatcher itself. Bash and jq are available on every machine where Claude Code runs. The kernel is about 500 lines. No build step, no package manager, no transpilation for the control layer. You can read the source and modify it in minutes.
 
 Shell scripts are the natural language for orchestrating other tools. Gate commands and check commands are shell commands. Writing the orchestrator in the same language as the things it orchestrates eliminates an impedance mismatch.
 

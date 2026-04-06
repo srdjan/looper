@@ -6,7 +6,7 @@
     <title>Looper - Claude Code's Quality Loop</title>
     <meta
       name="description"
-      content="Looper keeps Claude iterating until your code compiles, passes lint, and clears tests. A striking, package-based quality loop for Claude Code."
+      content="Claude Code stops when it thinks it's done. Looper keeps it going until it's actually done. A native plugin that runs your quality checks every time Claude says finished."
     >
     <meta
       name="keywords"
@@ -16,7 +16,7 @@
     <meta property="og:title" content="Looper - Claude Code's Quality Loop">
     <meta
       property="og:description"
-      content="Stop doing Claude's QA by hand. Looper catches failures, feeds them back, and keeps the loop moving."
+      content="Claude Code stops when it thinks it's done. Looper keeps it going until it's actually done. No external wrappers, no log scraping - it runs inside Claude Code's own hook system."
     >
     <meta property="og:type" content="website">
     <meta
@@ -27,7 +27,7 @@
     <meta name="twitter:title" content="Looper - Claude Code's Quality Loop">
     <meta
       name="twitter:description"
-      content="A package-based loop that keeps Claude iterating until the code is clean."
+      content="Claude Code stops when it thinks it's done. Looper keeps it going until it's actually done. A native quality loop inside Claude Code's own hook system."
     >
 
     <link
@@ -894,14 +894,16 @@
             </div>
 
             <h1 class="reveal is-visible delay-1">
-              Claude can sprint. <em>Looper makes it land clean.</em>
+              Claude stops when it thinks it's done. <em>Looper keeps it going until it's actually done.</em>
             </h1>
 
             <p class="lede reveal is-visible delay-2">
-              Looper intercepts Claude's stop signal, runs your real gates, and
-              feeds failures straight back into the session. No pasteback
-              ritual. No human QA relay. Just another pass until the code is
-              actually ready.
+              It's a native plugin that runs your quality checks - build, lint,
+              tests - every time Claude says "finished," and pushes it back
+              with the failures if anything is red. The code you get compiles,
+              passes lint, and has green tests, because Claude kept iterating
+              until those things were true. No external wrappers, no log
+              scraping - it runs inside Claude Code's own hook system.
             </p>
 
             <div class="hero-actions reveal is-visible delay-3">

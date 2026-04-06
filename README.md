@@ -4,7 +4,9 @@
 
 # Looper - Extensible Improvement Loop for Claude Code
 
-Looper is a package-based improvement loop for Claude Code. A minimal kernel dispatches hook events to packages that define every step of the loop: what to check, how to score, when to stop. The bundled `quality-gates` package reproduces the classic behavior (typecheck, lint, test, coverage gates), but you can create packages for TDD cycles, security audits, documentation verification, or anything else.
+Claude Code stops when it thinks it's done. Looper keeps it going until it's actually done. It's a native plugin that runs your quality checks - build, lint, tests - every time Claude says "finished," and pushes it back with the failures if anything is red. The code you get compiles, passes lint, and has green tests, because Claude kept iterating until those things were true. No external wrappers, no log scraping - it runs inside Claude Code's own hook system.
+
+A minimal kernel dispatches hook events to packages that define every step of the loop: what to check, how to score, when to stop. The bundled `quality-gates` package reproduces the classic behavior (typecheck, lint, test, coverage gates), but you can create packages for TDD cycles, security audits, documentation verification, or anything else.
 
 ## Install
 
