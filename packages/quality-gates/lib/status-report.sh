@@ -14,8 +14,29 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 source "$SCRIPT_DIR/recommendations.sh"
 
+print_runtime_block() {
+  local kernel_state="$1"
+  [ -f "$kernel_state" ] || return 0
+  if ! jq -e '.status == "config_blocked" and (.missing_runtimes | length > 0)' "$kernel_state" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "Runtime Block:"
+  jq -r '
+    .missing_runtimes[]
+    | "  - " + .package + ": requires runtime " + .runtime + " (command: " + .command + ")"
+  ' "$kernel_state"
+  echo "  Fix: install the missing runtime or remove the package from .claude/looper.json."
+}
+
+RUNTIME_BLOCK=$(print_runtime_block "$KERNEL_STATE")
+
 if [ ! -f "$SESSIONS_LOG" ]; then
   echo "No session history yet. Sessions are recorded after the first loop completes."
+  if [ -n "$RUNTIME_BLOCK" ]; then
+    echo ""
+    echo "$RUNTIME_BLOCK"
+  fi
   exit 0
 fi
 
@@ -76,11 +97,16 @@ if [ -f "$CONFIG" ]; then
       "  Gates: \((."quality-gates".gates // []) | map(.name) | join(", "))"
     ] | .[]
   ' "$CONFIG"
+
+  RECOMMENDATIONS=$(recommendations_json "$SESSIONS_LOG" "$CONFIG" "$KERNEL_STATE" 0 0 0)
+  RECOMMENDATION_BLOCK=$(print_recommendations_block "$RECOMMENDATIONS" "Recommendations" 3)
+  if [ -n "$RECOMMENDATION_BLOCK" ]; then
+    echo ""
+    echo "$RECOMMENDATION_BLOCK"
+  fi
 fi
 
-RECOMMENDATIONS=$(recommendations_json "$SESSIONS_LOG" "$CONFIG" "$KERNEL_STATE" 0 0 0)
-RECOMMENDATION_BLOCK=$(print_recommendations_block "$RECOMMENDATIONS" "Recommendations" 3)
-if [ -n "$RECOMMENDATION_BLOCK" ]; then
+if [ -n "$RUNTIME_BLOCK" ]; then
   echo ""
-  echo "$RECOMMENDATION_BLOCK"
+  echo "$RUNTIME_BLOCK"
 fi

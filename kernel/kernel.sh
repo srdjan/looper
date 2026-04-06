@@ -15,6 +15,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 CONFIG="${CLAUDE_PROJECT_DIR:-.}/.claude/looper.json"
 STATE_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/state"
 KERNEL_STATE="$STATE_DIR/kernel.json"
+RUNTIME_FIX_HINT="Install the missing runtime or remove the package from .claude/looper.json."
 
 # ── Kernel state helpers ────────────────────────────────
 kernel_state_json() {
@@ -22,7 +23,8 @@ kernel_state_json() {
     iteration: 0,
     max_iterations: $max,
     status: "running",
-    files_touched: []
+    files_touched: [],
+    missing_runtimes: []
   }'
 }
 
@@ -88,6 +90,57 @@ get_package_matcher() {
   jq -r --arg e "$event" '.matchers[$e] // ""' "$pkg_dir/package.json"
 }
 
+get_package_runtime() {
+  local pkg_dir="$1"
+  jq -r '.runtime // ""' "$pkg_dir/package.json"
+}
+
+detect_missing_runtimes() {
+  local packages pkg_name missing='[]'
+  packages=$(load_active_packages)
+  for pkg_name in $packages; do
+    local pkg_dir runtime
+    pkg_dir=$(resolve_package_dir "$pkg_name") || continue
+    runtime=$(get_package_runtime "$pkg_dir")
+    [ -z "$runtime" ] && continue
+    if ! command -v "$runtime" >/dev/null 2>&1; then
+      missing=$(echo "$missing" | jq \
+        --arg package "$pkg_name" \
+        --arg runtime "$runtime" \
+        --arg command "$runtime" \
+        '. + [{package:$package, runtime:$runtime, command:$command}]')
+    fi
+  done
+  echo "$missing"
+}
+
+render_missing_runtime_list() {
+  echo "$1" | jq -r '.[] | "  - \(.package): requires runtime \(.runtime) (command: \(.command))"'
+}
+
+render_missing_runtime_reason() {
+  echo "$1" | jq -r '
+    map("\(.package) requires \(.runtime)")
+    | join("; ")
+  '
+}
+
+runtime_block_active() {
+  [ -f "$STATE_DIR/.runtime_blocked" ]
+}
+
+emit_runtime_block_message() {
+  local missing_json="$1"
+  cat <<BLOCK
+## Configuration Blocked
+
+Looper cannot start because one or more configured packages require a missing runtime:
+$(render_missing_runtime_list "$missing_json")
+
+$RUNTIME_FIX_HINT
+BLOCK
+}
+
 # ── Handler dispatch ────────────────────────────────────
 event_to_handler() {
   case "$1" in
@@ -123,8 +176,7 @@ run_handler() {
 
 # ── SessionStart ────────────────────────────────────────
 dispatch_session_start() {
-  # Initialize kernel state (STATE_DIR already created by ensure_config)
-  kernel_state_json > "$KERNEL_STATE"
+  rm -f "$STATE_DIR/.runtime_blocked"
 
   # Initialize package state directories
   local packages
@@ -132,6 +184,23 @@ dispatch_session_start() {
   for pkg_name in $packages; do
     mkdir -p "$STATE_DIR/$pkg_name"
   done
+
+  # Detect runtime requirements before writing state
+  local missing_runtimes
+  missing_runtimes=$(detect_missing_runtimes)
+  local blocked=false
+  [ "$(echo "$missing_runtimes" | jq 'length')" -gt 0 ] && blocked=true
+
+  # Write kernel state atomically (includes missing_runtimes)
+  local init_status="running"
+  $blocked && init_status="config_blocked"
+  jq -n \
+    --argjson max "$MAX_ITERATIONS" \
+    --argjson mr "$missing_runtimes" \
+    --arg status "$init_status" \
+    '{iteration:0, max_iterations:$max, status:$status, files_touched:[], missing_runtimes:$mr}' > "$KERNEL_STATE"
+
+  $blocked && touch "$STATE_DIR/.runtime_blocked"
 
   # Print kernel context
   local pkg_count
@@ -142,6 +211,12 @@ dispatch_session_start() {
 You are operating inside an improvement loop (max $MAX_ITERATIONS passes).
 Active packages ($pkg_count): $(echo $packages | tr '\n' ' ')
 CONTEXT
+
+  if $blocked; then
+    echo ""
+    emit_runtime_block_message "$missing_runtimes"
+    return 0
+  fi
 
   # Dispatch to package handlers
   local handler_file
@@ -168,6 +243,21 @@ dispatch_pre_tool_use() {
   if [ "$iteration" -ge "$MAX_ITERATIONS" ]; then
     echo "Budget exhausted: $MAX_ITERATIONS iterations reached. No further edits allowed." >&2
     echo "Summarize what was accomplished and what remains." >&2
+    exit 2
+  fi
+
+  if runtime_block_active && echo "$tool_name" | grep -qE 'Edit|MultiEdit|Write'; then
+    local missing_json deny_reason
+    missing_json=$(kernel_read '.missing_runtimes')
+    deny_reason="Configuration blocked: $(render_missing_runtime_reason "$missing_json"). $RUNTIME_FIX_HINT"
+    jq -n --arg reason "$deny_reason" '{
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: $reason
+      }
+    }'
+    echo "$deny_reason" >&2
     exit 2
   fi
 
@@ -260,6 +350,19 @@ dispatch_stop() {
   if [ "$stop_active" = "true" ]; then
     kernel_write '.status' '"breaker_tripped"'
     echo "Stop hook breaker: allowing stop on re-entry." >&2
+    exit 0
+  fi
+
+  if runtime_block_active; then
+    local missing_json
+    missing_json=$(kernel_read '.missing_runtimes')
+    echo "" >&2
+    echo "══════════════════════════════════════════════" >&2
+    echo "  IMPROVEMENT LOOP BLOCKED - MISSING RUNTIME" >&2
+    echo "══════════════════════════════════════════════" >&2
+    render_missing_runtime_list "$missing_json" >&2
+    echo "" >&2
+    echo "$RUNTIME_FIX_HINT" >&2
     exit 0
   fi
 

@@ -2,6 +2,7 @@
   "name": "scope-guard",
   "version": "1.0.0",
   "description": "Prevents Claude from editing files outside the declared scope",
+  "runtime": "deno",
   "matchers": {
     "PreToolUse": "Edit|MultiEdit|Write"
   },

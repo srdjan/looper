@@ -24,6 +24,8 @@ On first session start, the kernel auto-detects your tech stack (Rust, Go, Pytho
 
 **Requirements:** `jq`.
 
+Bundled shell packages only need `jq`. SDK-authored packages declare their own runtime requirement in `package.json`; the current supported value is `deno`. If a configured package requires a missing runtime, Looper fails closed, prints a configuration error, and blocks edit tools until the runtime is installed or the package is removed from `.claude/looper.json`.
+
 ## Disable / Uninstall
 
 ```bash
@@ -210,6 +212,24 @@ packages/quality-gates/
 ```
 
 Convention over configuration: if `hooks/stop.sh` exists, the package handles Stop events. Missing handler = package has nothing to do for that event.
+
+Package manifests can also declare an optional runtime requirement:
+
+```json
+{
+  "name": "scope-guard",
+  "version": "1.0.0",
+  "description": "Prevent edits outside a declared scope",
+  "runtime": "deno",
+  "phase": "post"
+}
+```
+
+Supported runtime values:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `runtime` | string | Optional package-level runtime contract. `deno` is supported today. Missing runtimes put the kernel into `config_blocked` and block edits until fixed. |
 
 ### Multi-Package Composition
 

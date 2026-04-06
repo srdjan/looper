@@ -531,6 +531,7 @@ run_with_timeout 30 bash -c "npm test"
   "name": "my-package",
   "version": "1.0.0",
   "description": "What this package does",
+  "runtime": "deno",
   "matchers": {
     "PreToolUse": "Edit|MultiEdit|Write",
     "PostToolUse": "Edit|MultiEdit|Write"
@@ -539,6 +540,7 @@ run_with_timeout 30 bash -c "npm test"
 }
 ```
 
+- **runtime**: optional package-level runtime contract. `deno` is supported today. If the runtime is missing, Looper marks the session `config_blocked`, prints a configuration error at SessionStart, and blocks edit tools until the runtime is installed or the package is removed from `.claude/looper.json`.
 - **matchers**: regex patterns filtering which tools trigger PreToolUse and PostToolUse handlers. Without matchers, your handlers fire on every tool invocation.
 - **phase**: `"core"` (default) or `"post"`. Post-phase stop handlers only run after all core packages are satisfied.
 
@@ -715,6 +717,18 @@ If the session starts without the "Improvement Loop Active" message, the hooks a
 claude plugin info looper
 ```
 
+### A configured package requires a missing runtime
+
+You will see a `Configuration Blocked` message at SessionStart, edit tools will be denied, and `/looper:status` will show a `Runtime Block:` section.
+
+Common example: a project config enables `scope-guard`, but `deno` is not installed. SDK-authored packages declare `"runtime": "deno"` in their manifest, and the kernel fails closed instead of silently skipping them.
+
+Fix one of these:
+
+- Install the missing runtime, for example `deno`.
+- Remove the package from `.claude/looper.json`.
+- Replace it with a shell-native package that does not declare a runtime.
+
 ### State is stale from a previous session
 
 State resets on every SessionStart. If you see unexpected state, check that a new session is starting properly. The `"matcher": "new"` on the SessionStart hook ensures it only fires on new sessions.
@@ -731,7 +745,7 @@ The kernel recreates the directory on the next session.
 
 ## 13. Design Decisions
 
-**Why shell scripts?** Claude Code hooks are command-based. Shell is the natural fit: no runtime dependencies, no build step, no package manager. The entire kernel is two files totaling ~500 lines.
+**Why shell scripts?** Claude Code hooks are command-based. Shell is the natural fit for the kernel: no extra runtime for the dispatcher, no build step, and easy debugging. SDK-authored packages can still declare their own runtime when they need one.
 
 **Why jq for state?** JSON state files are human-readable, debuggable, and queryable. `jq` is the standard tool for JSON manipulation in shell. The overhead per call is ~5ms, negligible compared to the gate commands themselves.
 

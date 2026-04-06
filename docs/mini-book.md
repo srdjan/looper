@@ -1,6 +1,6 @@
-# Looper: The Missing Feedback Loop for Claude Code
+# Looper: A Native Improvement Loop for Claude Code
 
-A practitioner's guide to agentic quality enforcement.
+A practitioner's guide to native agentic quality enforcement inside Claude Code.
 
 ---
 
@@ -21,6 +21,10 @@ Looper closes it automatically.
 ## Chapter 2: What Looper Does
 
 Looper is a Claude Code plugin that intercepts the moment Claude finishes working and asks: did the code pass your quality checks? If the answer is no, Claude gets another turn with the failure output as feedback. This repeats until all required gates pass or an iteration budget is exhausted.
+
+That native part matters. Many teams try to bolt an improvement loop onto Claude from the outside with shell wrappers, copied transcripts, cron-style watchers, or a second process that re-runs tools after the model stops. Those approaches can be useful, but they sit beside Claude Code, not inside it. They do not share the same hook lifecycle. They do not get first-class access to SessionStart, PreToolUse, PostToolUse, and Stop. They cannot block an edit before it happens. They usually depend on log scraping, transcript parsing, or extra prompting discipline.
+
+Looper takes the opposite route. It runs where the work is already happening, inside Claude Code's native plugin and hook model. The loop is not an external supervisor peeking through a window. It is part of the session itself. Claude sees the loop rules at session start, gets per-edit feedback while working, and receives stop-time gate failures through the same native control path that Claude Code already exposes. That is the novelty in one sentence: Looper is not an external harness around Claude Code. It is a native control loop inside Claude Code.
 
 The effect is that Claude self-corrects. You ask for a feature, and the delivered code compiles, passes lint, and has green tests, because Claude kept iterating until those things were true.
 
@@ -46,7 +50,7 @@ Install the plugin:
 claude plugin install looper@claude-plugins-official
 ```
 
-You need `jq` on your system. On macOS that is `brew install jq`. On Debian or Ubuntu, `apt install jq`.
+You need `jq` on your system. On macOS that is `brew install jq`. On Debian or Ubuntu, `apt install jq`. If you enable SDK-authored packages such as `scope-guard`, you also need the runtime they declare in their package manifest. Today that usually means `deno`.
 
 Start Claude Code in any project:
 
@@ -324,11 +328,12 @@ The kernel maintains a JSON state file at `.claude/state/kernel.json`:
   "iteration": 2,
   "max_iterations": 10,
   "status": "running",
+  "missing_runtimes": [],
   "files_touched": ["src/user.ts", "src/user.test.ts"]
 }
 ```
 
-`iteration` is zero-indexed and increments each time the Stop hook forces another pass. `status` tracks the loop's lifecycle: `running`, `complete`, `budget_exhausted`, or `breaker_tripped`. `files_touched` accumulates every file Claude edits during the session, which gates use for conditional execution via `run_when`.
+`iteration` is zero-indexed and increments each time the Stop hook forces another pass. `status` tracks the loop's lifecycle: `running`, `complete`, `budget_exhausted`, `breaker_tripped`, or `config_blocked`. `missing_runtimes` records configured packages whose declared runtime is not installed. `files_touched` accumulates every file Claude edits during the session, which gates use for conditional execution via `run_when`.
 
 State is managed through jq with atomic writes. Every mutation goes through a temp file that is moved into place, preventing corruption from concurrent access.
 
@@ -385,6 +390,7 @@ The manifest declares the package's identity and behavior:
   "name": "my-package",
   "version": "1.0.0",
   "description": "What this package does",
+  "runtime": "deno",
   "matchers": {
     "PreToolUse": "Edit|MultiEdit|Write",
     "PostToolUse": "Edit|MultiEdit|Write"
@@ -392,6 +398,8 @@ The manifest declares the package's identity and behavior:
   "phase": "core"
 }
 ```
+
+The optional `runtime` field is a package-level contract. `deno` is supported today. If a configured package declares a runtime that is not present, the kernel fails closed: SessionStart reports a configuration block, PreToolUse blocks edits, and Stop exits cleanly without burning iteration budget. Looper does not silently skip the package because that would hide a broken setup.
 
 The `matchers` object contains regex patterns that filter which tool events reach the package's handlers. If you only care about file edits, match on `Edit|MultiEdit|Write`. If you want to see all tool invocations, omit the matcher for that event.
 
@@ -521,9 +529,19 @@ Claude sees both packages' feedback and knows that quality-gates is satisfied bu
 
 ### Why Bash
 
-Claude Code hooks execute shell commands. Looper could have been written in Python or Node, but that would add a runtime dependency. Bash and jq are available on every machine where Claude Code runs. The kernel is about 400 lines. No build step, no package manager, no transpilation. You can read the source and modify it in minutes.
+Claude Code hooks execute shell commands. Looper's kernel could have been written in Python or Node, but that would add a runtime dependency to the dispatcher itself. Bash and jq are available on every machine where Claude Code runs. The kernel is about 400 lines. No build step, no package manager, no transpilation for the control layer. You can read the source and modify it in minutes.
 
 Shell scripts are the natural language for orchestrating other tools. Gate commands and check commands are shell commands. Writing the orchestrator in the same language as the things it orchestrates eliminates an impedance mismatch.
+
+### Why Native Instead of External
+
+This is the architectural bet behind the whole project.
+
+An external loop usually works by wrapping `claude` in another command, scraping output, replaying tool failures through pasted prompts, or running a second process that watches files and decides when to ask the model for another pass. That can work, but it is structurally late. The wrapper only sees what happened after the fact. It cannot participate in Claude Code's own control points.
+
+Looper runs at those control points. SessionStart gives it a place to inject rules and project context before Claude starts. PreToolUse lets it block an edit before a protected file is touched. PostToolUse lets it run light checks while Claude is still in the middle of the task. Stop gives it a native place to decide whether Claude is actually done. That is not a cosmetic difference. It changes what the system can enforce.
+
+Native integration also keeps the mental model smaller. There is one session, one tool invocation stream, one state directory, and one control loop. You do not have to debug a second orchestration layer that shadows Claude Code from the outside.
 
 ### Why jq for State
 
@@ -565,6 +583,12 @@ A check that takes more than a second per file will make editing feel sluggish. 
 
 Verify the plugin is installed and enabled: `claude plugin list` should show looper. Verify jq is installed: `jq --version`. Check that `.claude/looper.json` exists and is valid JSON: `jq empty .claude/looper.json`.
 
+### A configured package is blocked on a missing runtime
+
+If SessionStart prints `Configuration Blocked`, Looper found a package whose declared runtime is missing. This is most common when `scope-guard` or another SDK-authored package is enabled but `deno` is not installed.
+
+Check the package manifest for its `runtime` field, install that runtime, or remove the package from `.claude/looper.json`. While the configuration is blocked, Looper denies edit tools on purpose. It is safer to stop than to pretend the package is active when it is not.
+
 ### Stale state
 
 State resets automatically on each new SessionStart. If you need to force a reset mid-session, delete the state directory: `rm -rf .claude/state/`.
@@ -597,6 +621,16 @@ claude plugin install looper@claude-plugins-official
 | ---------------- | -------- | ------------------- | --------------------------------------------------- |
 | `max_iterations` | number   | 10                  | Maximum improvement passes before budget exhaustion |
 | `packages`       | string[] | `["quality-gates"]` | Active packages in execution order                  |
+
+### Package Manifest Settings
+
+| Key           | Type   | Default  | Description                                                               |
+| ------------- | ------ | -------- | ------------------------------------------------------------------------- |
+| `name`        | string | required | Package identifier                                                        |
+| `version`     | string | required | Package version                                                           |
+| `description` | string | required | Short package description                                                 |
+| `runtime`     | string | -        | Optional runtime contract such as `deno`; missing runtimes block the loop |
+| `phase`       | string | `core`   | `core` or `post`; controls stop-phase ordering                            |
 
 ### Gate Settings
 

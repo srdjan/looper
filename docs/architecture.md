@@ -78,7 +78,7 @@ PreToolUse and PostToolUse register with no matcher (receives all tool events). 
 
 ### Kernel Responsibilities
 
-- **State lifecycle**: iteration counter, budget enforcement, status tracking
+- **State lifecycle**: iteration counter, budget enforcement, status tracking, runtime readiness checks
 - **Circuit breakers**: `stop_hook_active` re-entry guard, iteration budget cap
 - **Hook dispatch**: resolve packages, call handlers in order, aggregate results
 - **Package loading**: read `packages` array from `looper.json`, resolve directories
@@ -118,11 +118,12 @@ Scoring, gate evaluation, coaching messages, context injection content, post-edi
   "iteration": 0,
   "max_iterations": 10,
   "status": "running",
+  "missing_runtimes": [],
   "files_touched": []
 }
 ```
 
-Status values: `running`, `complete`, `budget_exhausted`, `breaker_tripped`.
+Status values: `running`, `complete`, `budget_exhausted`, `breaker_tripped`, `config_blocked`.
 
 ### Package State
 
@@ -155,6 +156,7 @@ Convention over configuration: if a handler file exists, the kernel calls it. No
   "name": "quality-gates",
   "version": "2.0.0",
   "description": "Quality gate loop",
+  "runtime": "deno",
   "matchers": {
     "PreToolUse": "Edit|MultiEdit|Write",
     "PostToolUse": "Edit|MultiEdit|Write"
@@ -163,6 +165,7 @@ Convention over configuration: if a handler file exists, the kernel calls it. No
 }
 ```
 
+- `runtime`: optional package-level runtime requirement. `deno` is supported today. If the required runtime is missing, the kernel records it in `kernel.json`, sets status to `config_blocked`, skips package dispatch, and blocks edit tools until the configuration is fixed.
 - `matchers`: regex patterns for PreToolUse/PostToolUse tool name filtering. Absent means "all tools".
 - `phase`: `"core"` (default) or `"post"`. Controls when the package's stop handler is evaluated.
 
@@ -218,6 +221,8 @@ Search path (first match wins per package name):
 2. `$HOME/.claude/packages/<name>/` - user-global
 3. `$CLAUDE_PLUGIN_ROOT/packages/<name>/` - bundled with the plugin
 
+Before dispatching package handlers, SessionStart also resolves any declared package runtime requirements. Missing runtimes are treated as configuration errors rather than per-hook failures.
+
 A project can override a bundled package by creating a same-named directory in `.claude/packages/`.
 
 ## Configuration
@@ -259,6 +264,10 @@ Prevents infinite re-entry. If Claude was pushed back by the Stop hook and tries
 ### Iteration Budget
 
 Hard cap at `max_iterations`. The kernel checks this both in the Stop dispatcher (exits 0 with summary) and in PreToolUse (blocks edits, exits 2). Status: `budget_exhausted`.
+
+### Missing Runtime
+
+If any configured package declares a runtime that is not available, the kernel exits SessionStart early with a configuration warning, blocks edit tools in PreToolUse, and exits Stop cleanly without retry churn. Status: `config_blocked`.
 
 ### All Packages Satisfied
 

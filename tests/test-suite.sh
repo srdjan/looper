@@ -670,6 +670,58 @@ assert_contains "override: uses project-local package" "LOCAL-OVERRIDE-MARKER" "
 
 rm -rf "$FIXTURE_OVERRIDE" "$OVR_STDOUT" "$OVR_STDERR"
 
+# ── kernel: runtime readiness ──────────────────────────
+
+echo ""
+echo "-- kernel: runtime readiness -------------"
+
+FIXTURE_RUNTIME=$(make_fixture)
+mkdir -p "$FIXTURE_RUNTIME/.claude/packages/runtime-missing/hooks"
+cat > "$FIXTURE_RUNTIME/.claude/packages/runtime-missing/package.json" <<'EOF'
+{
+  "name": "runtime-missing",
+  "version": "1.0.0",
+  "description": "Fixture package with a missing runtime",
+  "runtime": "missing-bin",
+  "phase": "core"
+}
+EOF
+
+cat > "$FIXTURE_RUNTIME/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 5,
+  "packages": ["runtime-missing"]
+}
+EOF
+
+RT_STDOUT=$(mktemp); RT_STDERR=$(mktemp)
+run_kernel "$FIXTURE_RUNTIME" "SessionStart" "" "$RT_STDOUT" "$RT_STDERR"
+assert_eq "runtime: session start exits 0" "0" "$?"
+assert_eq "runtime: kernel status is config_blocked" "config_blocked" "$(jq -r '.status' "$FIXTURE_RUNTIME/.claude/state/kernel.json")"
+assert_eq "runtime: missing runtime package recorded" "runtime-missing" "$(jq -r '.missing_runtimes[0].package' "$FIXTURE_RUNTIME/.claude/state/kernel.json")"
+assert_eq "runtime: missing runtime command recorded" "missing-bin" "$(jq -r '.missing_runtimes[0].command' "$FIXTURE_RUNTIME/.claude/state/kernel.json")"
+assert_contains "runtime: session start reports blocked config" "Configuration Blocked" "$(cat "$RT_STDOUT")"
+assert_contains "runtime: session start reports missing runtime" "missing-bin" "$(cat "$RT_STDOUT")"
+
+run_kernel "$FIXTURE_RUNTIME" "PreToolUse" '{"tool_name":"Edit","tool_input":{"file_path":"src/app.ts"}}' "$RT_STDOUT" "$RT_STDERR"
+assert_eq "runtime: pre-tool edit blocked" "2" "$?"
+assert_contains "runtime: pre-tool emits deny payload" '"permissionDecision": "deny"' "$(cat "$RT_STDOUT")"
+assert_contains "runtime: pre-tool explains missing runtime" "runtime-missing requires missing-bin" "$(cat "$RT_STDERR")"
+
+run_kernel "$FIXTURE_RUNTIME" "PreToolUse" '{"tool_name":"Read","tool_input":{"file_path":"README.md"}}' "$RT_STDOUT" "$RT_STDERR"
+assert_eq "runtime: non-edit tool still allowed" "0" "$?"
+
+run_kernel "$FIXTURE_RUNTIME" "Stop" '{"stop_hook_active":false}' "$RT_STDOUT" "$RT_STDERR"
+assert_eq "runtime: stop exits 0" "0" "$?"
+assert_contains "runtime: stop reports blocked runtime" "MISSING RUNTIME" "$(cat "$RT_STDERR")"
+assert_contains "runtime: stop names package" "runtime-missing" "$(cat "$RT_STDERR")"
+
+RT_STATUS_OUT=$(bash "$PROJECT_DIR/packages/quality-gates/lib/status-report.sh" "$FIXTURE_RUNTIME")
+assert_contains "runtime: status-report mentions runtime block" "Runtime Block:" "$RT_STATUS_OUT"
+assert_contains "runtime: status-report mentions missing command" "missing-bin" "$RT_STATUS_OUT"
+
+rm -rf "$FIXTURE_RUNTIME" "$RT_STDOUT" "$RT_STDERR"
+
 # ── kernel: post-edit checks ───────────────────────────
 
 echo ""
