@@ -6,6 +6,7 @@
 set -euo pipefail
 source "$LOOPER_HOOKS_DIR/pkg-utils.sh"
 source "$LOOPER_PKG_DIR/lib/recommendations.sh"
+source "$LOOPER_PKG_DIR/lib/trajectory.sh"
 
 CURRENT_PASS=$((LOOPER_ITERATION + 1))
 
@@ -201,6 +202,13 @@ if [ -n "$PREEXISTING" ]; then
 fi
 
 REMAINING=$((LOOPER_MAX_ITERATIONS - CURRENT_PASS))
+
+# Trajectory analysis: detect plateau, oscillation, regression
+TRAJECTORY_BLOCK=$(trajectory_coaching "$SCORES" "$TOTAL" "$REMAINING") || true
+if [ -n "$TRAJECTORY_BLOCK" ]; then
+  echo "" >&2
+  echo "$TRAJECTORY_BLOCK" >&2
+fi
 
 if [ "$REMAINING" -le 2 ]; then
   if is_set "$COACHING_BUDGET"; then

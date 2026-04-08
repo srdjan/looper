@@ -1305,6 +1305,155 @@ assert_contains "adaptive coaching: scope-guard suggestion shown" 'Consider addi
 
 rm -rf "$FIXTURE_REC2" "$REC2_STDOUT" "$REC2_STDERR"
 
+# ── Trajectory analysis ─────────────────────────────────
+
+echo ""
+echo "-- trajectory analysis --------------------"
+
+# Unit tests: detect_trajectory
+(
+  source "$PROJECT_DIR/packages/quality-gates/lib/trajectory.sh"
+
+  # Too early: 1 score
+  result=$(detect_trajectory '[40]' 100)
+  pattern=$(echo "$result" | jq -r '.pattern')
+  assert_eq "trajectory: 1 score returns null" "null" "$pattern"
+
+  # Too early: 2 scores
+  result=$(detect_trajectory '[40, 40]' 100)
+  pattern=$(echo "$result" | jq -r '.pattern')
+  assert_eq "trajectory: 2 scores returns null" "null" "$pattern"
+
+  # Improving: no pattern
+  result=$(detect_trajectory '[0, 30, 60]' 100)
+  pattern=$(echo "$result" | jq -r '.pattern')
+  assert_eq "trajectory: improving scores return null" "null" "$pattern"
+
+  # Improving (4 scores): no pattern
+  result=$(detect_trajectory '[0, 30, 50, 70]' 100)
+  pattern=$(echo "$result" | jq -r '.pattern')
+  assert_eq "trajectory: 4 improving scores return null" "null" "$pattern"
+
+  # Plateau: 3 identical scores
+  result=$(detect_trajectory '[40, 40, 40]' 100)
+  pattern=$(echo "$result" | jq -r '.pattern')
+  assert_eq "trajectory: plateau detected (3 scores)" "plateau" "$pattern"
+  assert_contains "trajectory: plateau detail mentions unchanged" "unchanged" "$(echo "$result" | jq -r '.detail')"
+
+  # Extended plateau: 5 identical scores
+  result=$(detect_trajectory '[40, 40, 40, 40, 40]' 100)
+  detail=$(echo "$result" | jq -r '.detail')
+  assert_contains "trajectory: extended plateau shows 5 passes" "5 passes" "$detail"
+
+  # Oscillation: alternating pattern
+  result=$(detect_trajectory '[40, 60, 40, 60]' 100)
+  pattern=$(echo "$result" | jq -r '.pattern')
+  assert_eq "trajectory: oscillation detected" "oscillation" "$pattern"
+  assert_contains "trajectory: oscillation detail shows values" "40 -> 60 -> 40 -> 60" "$(echo "$result" | jq -r '.detail')"
+
+  # Regression: score declining from peak
+  result=$(detect_trajectory '[40, 60, 30]' 100)
+  pattern=$(echo "$result" | jq -r '.pattern')
+  assert_eq "trajectory: regression detected (3 scores)" "regression" "$pattern"
+  assert_contains "trajectory: regression detail mentions drop" "dropped" "$(echo "$result" | jq -r '.detail')"
+
+  # Regression: 4 scores, declining at end
+  result=$(detect_trajectory '[30, 50, 60, 40]' 100)
+  pattern=$(echo "$result" | jq -r '.pattern')
+  assert_eq "trajectory: regression detected (4 scores)" "regression" "$pattern"
+)
+
+# Unit tests: trajectory_coaching
+(
+  source "$PROJECT_DIR/packages/quality-gates/lib/trajectory.sh"
+
+  # Budget boundary: remaining=1 suppresses coaching
+  out=$(trajectory_coaching '[40, 40, 40]' 100 1)
+  assert_eq "trajectory coaching: suppressed at remaining=1" "" "$out"
+
+  # Budget boundary: remaining=0 suppresses coaching
+  out=$(trajectory_coaching '[40, 40, 40]' 100 0)
+  assert_eq "trajectory coaching: suppressed at remaining=0" "" "$out"
+
+  # Plateau coaching emitted when remaining > 1
+  out=$(trajectory_coaching '[40, 40, 40]' 100 5)
+  assert_contains "trajectory coaching: plateau emits TRAJECTORY prefix" "TRAJECTORY:" "$out"
+  assert_contains "trajectory coaching: plateau suggests different strategy" "different strategy" "$out"
+
+  # Oscillation coaching
+  out=$(trajectory_coaching '[40, 60, 40, 60]' 100 5)
+  assert_contains "trajectory coaching: oscillation emits TRAJECTORY prefix" "TRAJECTORY:" "$out"
+  assert_contains "trajectory coaching: oscillation suggests addressing together" "together" "$out"
+
+  # Regression coaching
+  out=$(trajectory_coaching '[40, 60, 30]' 100 5)
+  assert_contains "trajectory coaching: regression emits TRAJECTORY prefix" "TRAJECTORY:" "$out"
+  assert_contains "trajectory coaching: regression suggests reverting" "reverting" "$out"
+
+  # No pattern: empty output
+  out=$(trajectory_coaching '[0, 30, 60]' 100 5)
+  assert_eq "trajectory coaching: improving gives empty output" "" "$out"
+)
+
+# Integration test: trajectory coaching appears in stop hook output
+FIXTURE_TRAJ=$(make_fixture)
+install_package "$FIXTURE_TRAJ" "quality-gates"
+cat > "$FIXTURE_TRAJ/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "gates": [{ "name": "fail", "command": "false", "weight": 100 }]
+  }
+}
+EOF
+mkdir -p "$FIXTURE_TRAJ/.claude/state/quality-gates"
+echo '{"scores":[0,0],"checks":{},"satisfied":false,"baseline":null}' > "$FIXTURE_TRAJ/.claude/state/quality-gates/state.json"
+jq -n '{ iteration: 2, max_iterations: 10, status: "running", files_touched: [] }' > "$FIXTURE_TRAJ/.claude/state/kernel.json"
+
+TRAJ_STDOUT=$(mktemp); TRAJ_STDERR=$(mktemp)
+run_kernel "$FIXTURE_TRAJ" "Stop" '{"stop_hook_active":false}' "$TRAJ_STDOUT" "$TRAJ_STDERR"
+assert_eq "trajectory integration: stop exits 2" "2" "$?"
+assert_contains "trajectory integration: plateau coaching in stop output" "TRAJECTORY:" "$(cat "$TRAJ_STDERR")"
+assert_contains "trajectory integration: mentions unchanged" "unchanged" "$(cat "$TRAJ_STDERR")"
+
+rm -rf "$FIXTURE_TRAJ" "$TRAJ_STDOUT" "$TRAJ_STDERR"
+
+# Integration test: no trajectory when improving
+# Use two gates: one passes (60pts), one fails (40pts). Score = 60.
+# With history [20, 40], new score 60 -> [20, 40, 60] = improving.
+FIXTURE_TRAJ2=$(make_fixture)
+install_package "$FIXTURE_TRAJ2" "quality-gates"
+cat > "$FIXTURE_TRAJ2/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "gates": [
+      { "name": "pass-gate", "command": "true", "weight": 60 },
+      { "name": "fail-gate", "command": "false", "weight": 40 }
+    ]
+  }
+}
+EOF
+mkdir -p "$FIXTURE_TRAJ2/.claude/state/quality-gates"
+echo '{"scores":[20,40],"checks":{},"satisfied":false,"baseline":null}' > "$FIXTURE_TRAJ2/.claude/state/quality-gates/state.json"
+jq -n '{ iteration: 2, max_iterations: 10, status: "running", files_touched: [] }' > "$FIXTURE_TRAJ2/.claude/state/kernel.json"
+
+TRAJ2_STDOUT=$(mktemp); TRAJ2_STDERR=$(mktemp)
+run_kernel "$FIXTURE_TRAJ2" "Stop" '{"stop_hook_active":false}' "$TRAJ2_STDOUT" "$TRAJ2_STDERR"
+# Should NOT contain trajectory coaching since scores are improving
+if grep -Fq "TRAJECTORY:" "$TRAJ2_STDERR"; then
+  FAIL=$((FAIL + 1))
+  ERRORS="${ERRORS}\n  x trajectory integration: no coaching when improving"
+  echo "  x trajectory integration: no coaching when improving"
+else
+  PASS=$((PASS + 1))
+  echo "  v trajectory integration: no coaching when improving"
+fi
+
+rm -rf "$FIXTURE_TRAJ2" "$TRAJ2_STDOUT" "$TRAJ2_STDERR"
+
 # ── Summary ─────────────────────────────────────────────
 
 TOTAL_TESTS=$((PASS + FAIL))
