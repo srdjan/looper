@@ -66,10 +66,10 @@ Hook registration is defined in `hooks/hooks.json` using the `${CLAUDE_PLUGIN_RO
 ```json
 {
   "hooks": {
-    "SessionStart": [{ "matcher": "new", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/kernel/kernel.sh\" SessionStart" }] }],
-    "PreToolUse":   [{ "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/kernel/kernel.sh\" PreToolUse" }] }],
-    "PostToolUse":  [{ "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/kernel/kernel.sh\" PostToolUse" }] }],
-    "Stop":         [{ "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/kernel/kernel.sh\" Stop", "timeout": 600 }] }]
+    "SessionStart": [{ "matcher": "new", "hooks": [{ "type": "command", "command": "bash \"...\" SessionStart", "timeout": 30 }] }],
+    "PreToolUse":   [{ "hooks": [{ "type": "command", "command": "bash \"...\" PreToolUse", "timeout": 10 }] }],
+    "PostToolUse":  [{ "hooks": [{ "type": "command", "command": "bash \"...\" PostToolUse", "timeout": 30 }] }],
+    "Stop":         [{ "hooks": [{ "type": "command", "command": "bash \"...\" Stop", "timeout": 600 }] }]
   }
 }
 ```
@@ -89,10 +89,13 @@ PreToolUse and PostToolUse register with no matcher (receives all tool events). 
 On SessionStart, the kernel calls `ensure_config` before dispatching to packages. This function:
 
 1. Creates `.claude/state/` if missing
-2. If `.claude/looper.json` is missing, detects the project's tech stack via `detect_stack()` and writes the matching preset config. Detection checks for marker files (`Cargo.toml`, `go.mod`, `pyproject.toml`, `deno.json`, `tsconfig.json`, etc.) in priority order and selects from preset configs in `packages/quality-gates/presets/`. Supported stacks: Rust, Go, Python, Deno, TypeScript+Biome, TypeScript+ESLint, and a minimal fallback.
+2. If `.claude/looper.json` is missing, runs the shared bootstrap detector in `packages/quality-gates/lib/bootstrap-config.sh`. The detector inspects stack markers, `package.json` scripts, lockfiles, and common tool configs, then synthesizes a config from repo truth. The output includes a confidence level plus verified, assumed, and unresolved signals.
 3. Appends `.claude/state/` to `.gitignore` if not already present
 
-After the first session, `ensure_config` is a no-op (the config file already exists).
+On the first SessionStart only, the kernel also stores a transient
+`bootstrap-summary.json` in `.claude/state/` so Claude sees a concise
+"Bootstrap Summary" block. After that first session, `ensure_config` is a
+no-op (the config file already exists).
 
 ### What the Kernel Does NOT Own
 
@@ -105,11 +108,17 @@ Scoring, gate evaluation, coaching messages, context injection content, post-edi
 ```
 .claude/state/
   kernel.json                 # kernel-owned: iteration, status, files_touched
+  bootstrap-summary.json      # transient first-run bootstrap summary
+  sessions.jsonl              # quality-gates: per-session summaries (append-only)
   quality-gates/
     state.json                # package-owned: scores, checks, baseline, session_id
     passes.jsonl              # package-owned: per-pass traces and edited files
-  security-audit/
-    state.json                # package-owned: findings, scan results
+  loop-memory/
+    state.json                # package-owned: cached computed priors
+  scope-guard/
+    state.json                # package-owned: violations
+  acceptance-flows/
+    state.json                # package-owned: flow results, run count
 ```
 
 ### Kernel State
@@ -159,10 +168,21 @@ Convention over configuration: if a handler file exists, the kernel calls it. No
 
 ```json
 {
+  "name": "scope-guard",
+  "version": "1.0.0",
+  "description": "Prevent edits outside a declared scope",
+  "runtime": "deno",
+  "phase": "post"
+}
+```
+
+The `quality-gates` package is shell-native and does not declare a runtime:
+
+```json
+{
   "name": "quality-gates",
   "version": "2.0.0",
   "description": "Quality gate loop",
-  "runtime": "deno",
   "matchers": {
     "PreToolUse": "Edit|MultiEdit|Write",
     "PostToolUse": "Edit|MultiEdit|Write"
@@ -296,11 +316,17 @@ looper/                              # plugin root
     looper-config/                   # /looper:looper-config skill
   commands/
     bootstrap.md                     # /looper:bootstrap command
+    doctor.md                        # /looper:doctor command
+    status.md                        # /looper:status command
   kernel/
     kernel.sh                        # kernel dispatcher
     pkg-utils.sh                     # state/config helpers
   packages/
-    quality-gates/                   # bundled package
+    quality-gates/                   # bundled package (core phase)
+    loop-memory/                     # cross-session learning (core phase, SDK)
+    scope-guard/                     # edit scope enforcement (post phase, SDK)
+    acceptance-flows/                # behavior verification (post phase, SDK)
+    sdk-hello/                       # reference SDK package
 ```
 
 ## Project Runtime Layout
@@ -313,6 +339,11 @@ your-project/
     looper.json                      # project config (created by ensure_config)
     state/
       kernel.json                    # kernel state
+      bootstrap-summary.json         # one-time first-run summary
+      sessions.jsonl                 # session summaries
       quality-gates/
         state.json                   # package state
+        passes.jsonl                 # per-pass traces
+      loop-memory/
+        state.json                   # cached priors
 ```

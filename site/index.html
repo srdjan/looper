@@ -622,6 +622,22 @@
           color: rgba(2, 39, 58, 0.6);
         }
 
+        .install-card .install-note.muted {
+          margin-top: 0.4rem;
+          font-size: 0.84rem;
+          opacity: 0.7;
+        }
+
+        .install-card .install-note.muted code {
+          background: transparent;
+          color: inherit;
+          padding: 0;
+        }
+
+        .install-section + .how-strip {
+          margin-top: clamp(2rem, 4vw, 3.5rem);
+        }
+
         @media (max-width: 900px) {
           .top-links {
             display: none;
@@ -857,10 +873,35 @@ Fix the specific failure. 8 passes remaining.
               </div>
 
               <div class="install-card">
-                <span class="install-label">Install</span>
-                <code>claude plugin install looper@claude-plugins-official</code>
-                <span class="install-note">Or: <code>claude --plugin-dir /path/to/looper</code></span>
+                <span class="install-label">Quick install</span>
+                <code>curl -fsSL https://raw.githubusercontent.com/srdjan/looper/main/install.sh | bash</code>
+                <span class="install-note">Or clone manually: <code>git clone https://github.com/srdjan/looper.git ~/.claude/plugins/looper</code></span>
+                <span class="install-note muted">Coming soon: <code>claude plugin install looper@claude-plugins-official</code></span>
               </div>
+            </div>
+
+            <div class="how-strip reveal">
+              <article class="how-step">
+                <strong>1. Start Claude</strong>
+                <p>
+                  Run <code>claude --plugin-dir ~/.claude/plugins/looper</code>
+                  in any project.
+                </p>
+              </article>
+              <article class="how-step">
+                <strong>2. Auto-detect</strong>
+                <p>
+                  Looper detects your stack and writes
+                  <code>.claude/looper.json</code> with matching gates.
+                </p>
+              </article>
+              <article class="how-step">
+                <strong>3. Loop</strong>
+                <p>
+                  Ask Claude for a code change. Quality gates run automatically
+                  until everything passes.
+                </p>
+              </article>
             </div>
           </div>
         </section>

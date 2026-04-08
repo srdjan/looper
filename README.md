@@ -19,30 +19,44 @@ verification, or anything else.
 
 ## Install
 
-From the official Claude Code marketplace after approval:
+### Quick start
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/srdjan/looper/main/install.sh | bash
+```
+
+This clones the repo to `~/.claude/plugins/looper`, checks that `jq` and
+`claude` are available, and prints the command to start Claude Code with the
+plugin. Or clone manually with
+`git clone https://github.com/srdjan/looper.git ~/.claude/plugins/looper`.
+
+### Marketplace (coming soon)
 
 ```bash
 claude plugin install looper@claude-plugins-official
 ```
 
-For local development or pre-release testing:
+**Requirements:** `jq` (`brew install jq` on macOS, `apt install jq` on
+Debian/Ubuntu). Bundled shell packages only need `jq`. SDK-authored packages
+declare their own runtime in `package.json`; the current supported value is
+`deno`. If a configured package requires a missing runtime, Looper fails closed
+and blocks edit tools until the runtime is installed or the package is removed
+from `.claude/looper.json`.
 
-```bash
-claude --plugin-dir /path/to/looper
-```
+## What Happens on First Run
 
-On first session start, the kernel auto-detects your tech stack (Rust, Go,
-Python, Deno, TypeScript+Biome, TypeScript+ESLint) and writes a
-`.claude/looper.json` with the matching preset. No configuration needed for
-common stacks. Run `/looper:looper-config` for fine-tuning.
+1. Start `claude` in any project.
+2. Looper inspects repo truth - stack markers, `package.json` scripts, lockfiles,
+   tool configs - and writes `.claude/looper.json` with matching gates.
+3. A bootstrap confidence summary shows what was verified versus inferred.
+4. Ask Claude for a code change.
+5. After Claude finishes, the Stop hook runs your quality gates.
+6. If any required gate fails, Claude gets the failure output and tries again.
+7. The loop ends when all gates pass or the iteration budget is reached.
 
-**Requirements:** `jq`.
-
-Bundled shell packages only need `jq`. SDK-authored packages declare their own
-runtime requirement in `package.json`; the current supported value is `deno`. If
-a configured package requires a missing runtime, Looper fails closed, prints a
-configuration error, and blocks edit tools until the runtime is installed or the
-package is removed from `.claude/looper.json`.
+Run `/looper:bootstrap` to verify your setup. Run `/looper:doctor` to compare
+your config against the repo's actual tooling. Run `/looper:looper-config` for
+guided fine-tuning.
 
 ## Disable / Uninstall
 
@@ -51,8 +65,14 @@ claude plugin disable looper@claude-plugins-official    # stop hooks from firing
 claude plugin uninstall looper@claude-plugins-official  # remove the plugin entirely
 ```
 
+For source installs, remove the plugin directory:
+
+```bash
+bash ~/.claude/plugins/looper/uninstall.sh
+```
+
 Project config (`.claude/looper.json`) and state (`.claude/state/`) are
-preserved. Delete them manually if no longer needed.
+preserved unless explicitly cleaned up during uninstall.
 
 ## Usage
 
@@ -257,6 +277,38 @@ flows fail.
 acceptance-flows runs in the `post` phase, so it only starts once
 `quality-gates` is satisfied.
 
+### loop-memory
+
+Reads accumulated quality-gates data and injects predictive context at the
+start of each new session. It computes gate difficulty profiles, file-gate
+failure correlations, convergence shape, and oscillation patterns from
+historical pass traces and session summaries. At PreToolUse, it warns when
+Claude edits a file that has historically correlated with gate failures.
+
+```json
+{
+  "packages": ["quality-gates", "loop-memory"],
+  "loop-memory": {
+    "min_sessions": 3,
+    "max_context_lines": 18,
+    "lookback_sessions": 20,
+    "correlation_threshold": 0.3,
+    "enable_file_warnings": true
+  }
+}
+```
+
+| Field                   | Default | Description                                                          |
+| ----------------------- | ------- | -------------------------------------------------------------------- |
+| `min_sessions`          | 3       | Minimum completed sessions before generating priors                  |
+| `max_context_lines`     | 18      | Cap on injected context lines at SessionStart                        |
+| `lookback_sessions`     | 20      | Number of recent sessions to analyze                                 |
+| `correlation_threshold` | 0.3     | Minimum failure rate for a file-gate correlation to be reported      |
+| `enable_file_warnings`  | `true`  | Emit PreToolUse context when editing historically correlated files   |
+
+loop-memory runs in the `core` phase alongside quality-gates. It never blocks
+edits or forces loop continuation - it only injects advisory context.
+
 ## Architecture
 
 Two layers: a kernel and packages.
@@ -268,7 +320,7 @@ looper.json (user config)
   KERNEL  (loop mechanics, hook dispatch, state, circuit breakers)
     |
     v
-  PACKAGES  (quality-gates, scope-guard, acceptance-flows, ...)
+  PACKAGES  (quality-gates, loop-memory, scope-guard, acceptance-flows, ...)
     |
     v
   Claude Code hooks  (SessionStart, PreToolUse, PostToolUse, Stop)
@@ -470,8 +522,8 @@ aggregate stats, current config, and recommendation hints.
 
 The log is local-only, gitignored, and contains: status, iterations, score,
 baseline savings, and timestamp. When recent history suggests a clear next move,
-Looper now surfaces lightweight recommendations such as enabling baseline,
-adjusting `max_iterations`, or adding `scope-guard`. The Stop hook also shows a
+Looper shows recommendations when the signal is clear: enable baseline,
+adjust `max_iterations`, or add `scope-guard`. The Stop hook also shows a
 short `Suggestions:` block during failing sessions when the signal is strong
 enough.
 
@@ -482,6 +534,11 @@ red after being green, or stays red across multiple passes, Stop feedback adds a
 short `PROVENANCE:` block showing when the failure first appeared and which
 files changed around it. `/looper:status` shows the same signal as `Failure
 Introduction Points:` for the most recent session.
+
+If the generated config stops matching the repo, run `/looper:doctor`. It
+re-runs Looper's bootstrap detection, compares the proposed gates and checks to
+your current `.claude/looper.json`, and points you to `/looper:looper-config`
+when guided repair is the better move.
 
 > #### Built By
 >

@@ -158,6 +158,43 @@ rm -rf "$FIXTURE_UTILS"
 # ── kernel: SessionStart ────────────────────────────────
 
 echo ""
+echo "-- kernel: preflight check ---------------"
+
+FIXTURE_PREFLIGHT=$(make_fixture)
+cat > "$FIXTURE_PREFLIGHT/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 5,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "gates": [{ "name": "test", "command": "true", "weight": 100 }]
+  }
+}
+EOF
+
+# Simulate missing jq by creating a minimal PATH with symlinks to bash/grep/mkdir
+# but not jq
+FAKE_BIN=$(mktemp -d)
+for cmd in bash cat grep mkdir printf rm tail mv test touch chmod mktemp tr wc head sed; do
+  real=$(command -v "$cmd" 2>/dev/null) && ln -sf "$real" "$FAKE_BIN/$cmd"
+done
+
+PREFLIGHT_STDOUT=$(mktemp); PREFLIGHT_STDERR=$(mktemp)
+(
+  export CLAUDE_PROJECT_DIR="$FIXTURE_PREFLIGHT"
+  export CLAUDE_PLUGIN_ROOT="$PROJECT_DIR"
+  export PATH="$FAKE_BIN"
+  cd "$FIXTURE_PREFLIGHT" || exit 1
+  bash "$PROJECT_DIR/kernel/kernel.sh" "SessionStart" >"$PREFLIGHT_STDOUT" 2>"$PREFLIGHT_STDERR"
+)
+PREFLIGHT_EXIT=$?
+rm -rf "$FAKE_BIN"
+assert_eq "preflight: exits 0 when jq missing" "0" "$PREFLIGHT_EXIT"
+assert_contains "preflight: reports missing jq" "jq is required" "$(cat "$PREFLIGHT_STDOUT")"
+assert_contains "preflight: shows brew hint" "brew install jq" "$(cat "$PREFLIGHT_STDOUT")"
+assert_contains "preflight: shows apt hint" "apt install jq" "$(cat "$PREFLIGHT_STDOUT")"
+rm -rf "$FIXTURE_PREFLIGHT" "$PREFLIGHT_STDOUT" "$PREFLIGHT_STDERR"
+
+echo ""
 echo "-- kernel: SessionStart ------------------"
 
 FIXTURE_SESSION=$(make_fixture)
@@ -561,6 +598,8 @@ assert_true "bootstrap: state dir created" test -d "$FIXTURE_BOOT/.claude/state"
 assert_contains "bootstrap: .gitignore updated" ".claude/state/" "$(cat "$FIXTURE_BOOT/.gitignore")"
 # Bare fixture (no marker files) should detect minimal stack
 assert_contains "bootstrap: detects minimal stack" "detected minimal" "$(cat "$BOOT_STDERR")"
+assert_contains "bootstrap: reports low confidence" "bootstrap confidence low" "$(cat "$BOOT_STDERR")"
+assert_contains "bootstrap: session output includes bootstrap summary" "Bootstrap Summary" "$(cat "$BOOT_STDOUT")"
 assert_true "bootstrap: minimal has test gate" jq -e '.["quality-gates"].gates[] | select(.name == "test")' "$FIXTURE_BOOT/.claude/looper.json"
 
 # Second run should not recreate config
@@ -568,8 +607,45 @@ FIRST_CONFIG=$(cat "$FIXTURE_BOOT/.claude/looper.json")
 run_kernel "$FIXTURE_BOOT" "SessionStart" "" "$BOOT_STDOUT" "$BOOT_STDERR"
 SECOND_CONFIG=$(cat "$FIXTURE_BOOT/.claude/looper.json")
 assert_eq "bootstrap: idempotent config" "$FIRST_CONFIG" "$SECOND_CONFIG"
+assert_false "bootstrap: summary is one-time" grep -F "Bootstrap Summary" "$BOOT_STDOUT"
 
 rm -rf "$FIXTURE_BOOT" "$BOOT_STDOUT" "$BOOT_STDERR"
+
+# ── plugin: repo-truth bootstrap ───────────────────────
+
+echo ""
+echo "-- plugin: repo-truth bootstrap ---------"
+
+FIXTURE_TRUTH=$(make_fixture)
+rm -f "$FIXTURE_TRUTH/.claude/looper.json"
+echo "node_modules/" > "$FIXTURE_TRUTH/.gitignore"
+cat > "$FIXTURE_TRUTH/package.json" <<'EOF'
+{
+  "scripts": {
+    "test": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}
+EOF
+touch "$FIXTURE_TRUTH/tsconfig.json" "$FIXTURE_TRUTH/pnpm-lock.yaml" "$FIXTURE_TRUTH/eslint.config.js" "$FIXTURE_TRUTH/.prettierrc"
+
+TRUTH_STDOUT=$(mktemp); TRUTH_STDERR=$(mktemp)
+run_kernel "$FIXTURE_TRUTH" "SessionStart" "" "$TRUTH_STDOUT" "$TRUTH_STDERR"
+assert_eq "repo-truth bootstrap exits 0" "0" "$?"
+assert_contains "repo-truth: detects typescript-eslint" "detected typescript-eslint" "$(cat "$TRUTH_STDERR")"
+assert_contains "repo-truth: summary points to doctor" "Review: /looper:doctor" "$(cat "$TRUTH_STDOUT")"
+assert_eq "repo-truth: typecheck uses pnpm script" "pnpm run typecheck" "$(jq -r '.["quality-gates"].gates[] | select(.name == "typecheck") | .command' "$FIXTURE_TRUTH/.claude/looper.json")"
+assert_eq "repo-truth: lint uses pnpm script" "pnpm run lint" "$(jq -r '.["quality-gates"].gates[] | select(.name == "lint") | .command' "$FIXTURE_TRUTH/.claude/looper.json")"
+assert_eq "repo-truth: test uses pnpm script" "pnpm test" "$(jq -r '.["quality-gates"].gates[] | select(.name == "test") | .command' "$FIXTURE_TRUTH/.claude/looper.json")"
+
+rm -rf "$FIXTURE_TRUTH" "$TRUTH_STDOUT" "$TRUTH_STDERR"
 
 # ── plugin: stack auto-detection ─────────────────────
 
@@ -606,6 +682,51 @@ test_stack_detection "typescript-eslint" "tsconfig.json"           "typescript-e
 
 # Priority: Rust wins over TypeScript when both markers present
 test_stack_detection "rust-over-ts"      "Cargo.toml tsconfig.json" "rust"            "check"
+
+# ── plugin: doctor report ──────────────────────────────
+
+echo ""
+echo "-- plugin: doctor report ----------------"
+
+FIXTURE_DOCTOR=$(make_fixture)
+cat > "$FIXTURE_DOCTOR/package.json" <<'EOF'
+{
+  "scripts": {
+    "test": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}
+EOF
+touch "$FIXTURE_DOCTOR/tsconfig.json" "$FIXTURE_DOCTOR/pnpm-lock.yaml" "$FIXTURE_DOCTOR/eslint.config.js" "$FIXTURE_DOCTOR/.prettierrc"
+cat > "$FIXTURE_DOCTOR/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "gates": [
+      { "name": "typecheck", "command": "npm run typecheck", "weight": 30 },
+      { "name": "lint", "command": "npm run lint", "weight": 20 },
+      { "name": "test", "command": "npm test", "weight": 30 }
+    ],
+    "checks": []
+  }
+}
+EOF
+
+DOCTOR_OUT=$(bash "$PROJECT_DIR/packages/quality-gates/lib/doctor-report.sh" "$FIXTURE_DOCTOR")
+assert_contains "doctor: reports package manager" "Package manager: pnpm" "$DOCTOR_OUT"
+assert_contains "doctor: reports drift" "Current Config Drift:" "$DOCTOR_OUT"
+assert_contains "doctor: shows added format check" "add: check:format" "$DOCTOR_OUT"
+assert_contains "doctor: shows proposed test gate" "test: pnpm test" "$DOCTOR_OUT"
+
+rm -rf "$FIXTURE_DOCTOR"
 
 # ── plugin: bundled package resolution ─────────────────
 

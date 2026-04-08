@@ -24,27 +24,40 @@ project.
 
 ## 2. Installation
 
-Install from the official marketplace after approval:
+Quick install (clones to `~/.claude/plugins/looper`, checks dependencies):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/srdjan/looper/main/install.sh | bash
+```
+
+Or clone manually:
+
+```bash
+git clone https://github.com/srdjan/looper.git ~/.claude/plugins/looper
+```
+
+Then start Claude Code with the plugin:
+
+```bash
+claude --plugin-dir ~/.claude/plugins/looper
+```
+
+Marketplace install (coming soon):
 
 ```bash
 claude plugin install looper@claude-plugins-official
 ```
 
-For local development or pre-release testing (running from a git clone):
-
-```bash
-claude --plugin-dir /path/to/looper
-```
-
 You need `jq` installed. On macOS: `brew install jq`. On Debian/Ubuntu:
-`apt install jq`.
+`apt install jq`. The kernel checks for `jq` on session start and prints
+install instructions if it is missing.
 
-Start Claude Code in any project and the plugin auto-detects your tech stack on
-the first session. It looks for marker files (Cargo.toml, go.mod,
-pyproject.toml, deno.json, tsconfig.json) and writes a `.claude/looper.json`
-with the matching preset: appropriate gates, checks, and tool commands for your
-stack. No configuration required for Rust, Go, Python, Deno, or TypeScript
-projects. Run `/looper:looper-config` to customize further.
+On first session start, Looper inspects repo truth - stack markers, `package.json`
+scripts, lockfiles, and common tool configs - then writes `.claude/looper.json`
+with matching gates and checks. A bootstrap summary shows the detected stack,
+confidence level, and any unresolved signals. Run `/looper:bootstrap` to verify
+your setup, `/looper:doctor` to compare your config against the repo's actual
+tooling, or `/looper:looper-config` to customize further.
 
 ---
 
@@ -64,7 +77,8 @@ add input validation to the user registration endpoint
 Here is what happens behind the scenes:
 
 1. **SessionStart** fires. The kernel initializes state and tells Claude about
-   the active gates, their weights, and the iteration budget.
+   the active gates, their weights, the iteration budget, and on first run a
+   short bootstrap summary describing what Looper verified versus inferred.
 
 2. Claude works. Each file edit passes through **PreToolUse** (which tracks
    touched files and injects the pass counter) and **PostToolUse** (which runs
@@ -104,6 +118,10 @@ that package.
 
 Run `/looper:looper-config` for guided setup. It detects your stack and proposes
 gates.
+
+Run `/looper:doctor` when you want to compare your current `.claude/looper.json`
+to what Looper would bootstrap from repo truth today. The command is read-only:
+it reports detected stack, confidence, drift, and the proposed gates/checks.
 
 ### 4.1 Gates
 
@@ -1071,7 +1089,10 @@ script failure, not a loop signal.
 ```
 Install*:    claude plugin install looper@claude-plugins-official
 Local dev:   claude --plugin-dir /path/to/looper
+Bootstrap:   /looper:bootstrap
 Configure:   /looper:looper-config
+Doctor:      /looper:doctor
+Status:      /looper:status
 Disable:     claude plugin disable looper@claude-plugins-official
 Remove:      claude plugin uninstall looper@claude-plugins-official
 

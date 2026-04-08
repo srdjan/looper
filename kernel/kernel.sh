@@ -15,6 +15,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 CONFIG="${CLAUDE_PROJECT_DIR:-.}/.claude/looper.json"
 STATE_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude/state"
 KERNEL_STATE="$STATE_DIR/kernel.json"
+BOOTSTRAP_SUMMARY="$STATE_DIR/bootstrap-summary.json"
 RUNTIME_FIX_HINT="Install the missing runtime or remove the package from .claude/looper.json."
 
 # ── Kernel state helpers ────────────────────────────────
@@ -44,20 +45,6 @@ _kernel_update() {
 }
 kernel_write() { _kernel_update "$1 = $2"; }
 kernel_append() { _kernel_update "$1 += [$2]"; }
-
-# ── Stack detection ─────────────────────────────────────
-detect_stack() {
-  local d="${CLAUDE_PROJECT_DIR:-.}"
-  [ -f "$d/Cargo.toml" ]                                      && echo "rust"             && return 0
-  [ -f "$d/go.mod" ]                                          && echo "go"               && return 0
-  [ -f "$d/pyproject.toml" ] || [ -f "$d/requirements.txt" ]  && echo "python"           && return 0
-  [ -f "$d/deno.json" ] || [ -f "$d/deno.jsonc" ]             && echo "deno"             && return 0
-  if [ -f "$d/tsconfig.json" ]; then
-    [ -f "$d/biome.json" ] || [ -f "$d/biome.jsonc" ]         && echo "typescript-biome" && return 0
-    echo "typescript-eslint" && return 0
-  fi
-  echo "minimal"
-}
 
 # ── Package resolution ──────────────────────────────────
 resolve_package_dir() {
@@ -211,6 +198,30 @@ dispatch_session_start() {
 You are operating inside an improvement loop (max $MAX_ITERATIONS passes).
 Active packages ($pkg_count): $(echo $packages | tr '\n' ' ')
 CONTEXT
+
+  if [ -f "$BOOTSTRAP_SUMMARY" ]; then
+    echo ""
+    echo "## Bootstrap Summary"
+    jq -r '
+      [
+        "Detected stack: \(.stack)",
+        "Bootstrap confidence: \(.confidence)"
+      ] | .[]
+    ' "$BOOTSTRAP_SUMMARY"
+    if jq -e '.verified | length > 0' "$BOOTSTRAP_SUMMARY" >/dev/null 2>&1; then
+      echo ""
+      echo "Verified:"
+      jq -r '.verified[:3][] | "  - " + .' "$BOOTSTRAP_SUMMARY"
+    fi
+    if jq -e '.unresolved | length > 0' "$BOOTSTRAP_SUMMARY" >/dev/null 2>&1; then
+      echo ""
+      echo "Unresolved:"
+      jq -r '.unresolved[:2][] | "  - " + .' "$BOOTSTRAP_SUMMARY"
+    fi
+    echo ""
+    echo "Review: /looper:doctor"
+    rm -f "$BOOTSTRAP_SUMMARY"
+  fi
 
   if $blocked; then
     echo ""
@@ -442,21 +453,32 @@ ensure_config() {
   mkdir -p "$STATE_DIR"
 
   if [ ! -f "$CONFIG" ]; then
-    local stack
-    stack=$(detect_stack)
-    local preset_file="$PLUGIN_ROOT/packages/quality-gates/presets/${stack}.json"
-    [ -f "$preset_file" ] || { preset_file="$PLUGIN_ROOT/packages/quality-gates/presets/minimal.json"; stack="minimal"; }
-
-    local config
-    config=$(jq -n --argjson pkgs '["quality-gates"]' --slurpfile qg "$preset_file" '{
-      max_iterations: 10,
-      packages: $pkgs,
-      "quality-gates": $qg[0]
-    }')
+    local report config stack confidence
+    report=$(bash "$PLUGIN_ROOT/packages/quality-gates/lib/bootstrap-config.sh" inspect "${CLAUDE_PROJECT_DIR:-.}")
+    config=$(echo "$report" | jq '.config')
+    stack=$(echo "$report" | jq -r '.stack')
+    confidence=$(echo "$report" | jq -r '.confidence')
 
     printf '%s\n' "$config" > "$CONFIG"
-    echo "Looper: detected $stack stack - config written to $CONFIG" >&2
-    echo "Looper: customize with /looper:looper-config" >&2
+    printf '%s\n' "$report" > "$BOOTSTRAP_SUMMARY"
+
+    # "detected $stack" and "bootstrap confidence" lines are parsed by tests
+    local gate_names
+    gate_names=$(echo "$config" | jq -r '."quality-gates".gates // [] | map(.name) | join(", ")' 2>/dev/null || echo "")
+    cat >&2 <<WELCOME
+
+## Looper: First Run
+
+Looper: detected $stack stack - config written to $CONFIG
+Looper: bootstrap confidence $confidence
+${gate_names:+Gates: $gate_names
+}
+The improvement loop is now active. When you finish a task, Looper runs
+your quality gates and pushes Claude back if anything fails.
+
+Tip: /looper:bootstrap to verify setup, /looper:doctor to inspect repo truth
+     /looper:looper-config to customize gates
+WELCOME
   fi
 
   # Ensure .claude/state/ is gitignored
@@ -470,11 +492,31 @@ ensure_config() {
   fi
 }
 
+# ── Preflight checks ───────────────────────────────────
+preflight_check() {
+  if ! command -v jq >/dev/null 2>&1; then
+    cat <<'MISSING_JQ'
+## Looper: Missing Dependency
+
+jq is required but not installed.
+
+  macOS:         brew install jq
+  Debian/Ubuntu: sudo apt install jq
+  Fedora:        sudo dnf install jq
+
+Install jq and restart your session.
+MISSING_JQ
+    return 1
+  fi
+  return 0
+}
+
 MAX_ITERATIONS=$(jq -r '.max_iterations // 10' "$CONFIG" 2>/dev/null || echo 10)
 
 # ── Main dispatch ───────────────────────────────────────
 case "$EVENT" in
   SessionStart)
+    preflight_check || exit 0
     ensure_config
     MAX_ITERATIONS=$(jq -r '.max_iterations // 10' "$CONFIG" 2>/dev/null || echo 10)
     dispatch_session_start

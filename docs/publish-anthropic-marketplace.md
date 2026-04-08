@@ -20,6 +20,7 @@ That means the valid official forms are:
 Slash commands follow the plugin name:
 
 - `/looper:bootstrap`
+- `/looper:doctor`
 - `/looper:looper-config`
 
 If you want a true `timok` namespace such as `looper@timok`, that requires a separate self-hosted marketplace named `timok`. It is not the naming model for Anthropic's official directory.
@@ -63,6 +64,7 @@ claude --plugin-dir /Users/srdjans/Code/looper
 Inside Claude Code, verify:
 
 - `/looper:bootstrap` exists
+- `/looper:doctor` exists
 - `/looper:looper-config` exists
 - the plugin starts cleanly in a project
 - first-run `.claude/looper.json` bootstrap still works

@@ -34,3 +34,10 @@
 - Leading indicators: Failing sessions include concrete provenance output; persistent failures point to a first failing pass; status output surfaces the same diagnosis without replaying the session
 - Guardrails: Keep provenance in the package layer, not the kernel; no diff snapshots or content copies; no provenance output for baseline-marked pre-existing failures
 - Frontier note: The control loop now has better local diagnosis. The next moves should come from usage data, not from adding more speculative package behavior.
+
+## Iteration 6: Cross-Session Learning (loop-memory)
+- What changed: Added a new SDK-authored package `loop-memory` that reads accumulated `passes.jsonl` and `sessions.jsonl` data to inject predictive context into future sessions. At SessionStart, it computes gate difficulty profiles (failure rates, average iterations to pass), file-gate failure correlations (which files break which gates), convergence shape (completion rates, budget exhaustion), and oscillation patterns (gate pairs that see-saw). At PreToolUse, it warns when Claude edits a file historically correlated with gate failures. The package is the first cross-package data consumer: it reads quality-gates' state without modifying it.
+- Primary metric: Reduction in iterations-to-convergence over time as the system accumulates more session data
+- Leading indicators: Sessions on projects with history converge faster than cold-start sessions; file-correlated warnings prevent known failure patterns from recurring; gate difficulty context helps Claude prioritize
+- Guardrails: Advisory only - never blocks edits or forces loop continuation; silent on cold start (fewer than 3 sessions); no kernel or quality-gates changes; all data stays local in `.claude/state/`
+- Frontier note: Cross-session data is now used for prediction, not just diagnosis. Future iterations could enrich priors with semantic data from structured git commits (Intent, Decided-Against trailers) or add session-end summaries to commit metadata.
