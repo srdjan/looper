@@ -5,6 +5,7 @@
 
 set -euo pipefail
 source "$LOOPER_HOOKS_DIR/pkg-utils.sh"
+source "$LOOPER_PKG_DIR/lib/provenance.sh"
 source "$LOOPER_PKG_DIR/lib/recommendations.sh"
 source "$LOOPER_PKG_DIR/lib/trajectory.sh"
 
@@ -23,6 +24,11 @@ append_failure_block() {
 append_preexisting_block() {
   local heading="$1" body="$2"
   PREEXISTING="${PREEXISTING}\n-- ${heading} --\n${body}\n"
+}
+
+append_gate_trace() {
+  local name="$1" status="$2" is_required="$3"
+  GATE_TRACE_PAIRS="${GATE_TRACE_PAIRS:+${GATE_TRACE_PAIRS},}\"$name\":{\"status\":\"$status\",\"required\":${is_required}}"
 }
 
 export LOOPER_HOOKS_DIR
@@ -46,6 +52,7 @@ FAILURES=""
 PREEXISTING=""
 GATE_RESULTS=""
 CHECKS_PAIRS=""
+GATE_TRACE_PAIRS=""
 REQUIRED_FAILED=0
 PREEXISTING_COUNT=0
 
@@ -59,6 +66,7 @@ while IFS=$'\t' read -r name cmd weight skip_if is_required run_when_json gate_t
     SCORE=$((SCORE + weight))
     append_gate_result "o" "$name" "skipped - $skip_if not found" "$weight" "$weight"
     CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":true"
+    append_gate_trace "$name" "skip" "$is_required"
     continue
   fi
 
@@ -67,6 +75,7 @@ while IFS=$'\t' read -r name cmd weight skip_if is_required run_when_json gate_t
       SCORE=$((SCORE + weight))
       append_gate_result "o" "$name" "skipped - no matching files changed" "$weight" "$weight"
       CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":true"
+      append_gate_trace "$name" "skip" "$is_required"
       continue
     fi
   fi
@@ -75,6 +84,7 @@ while IFS=$'\t' read -r name cmd weight skip_if is_required run_when_json gate_t
     SCORE=$((SCORE + weight))
     append_gate_result "v" "$name" "pass" "$weight" "$weight"
     CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":true"
+    append_gate_trace "$name" "pass" "$is_required"
   else
     exit_code=$?
     bl_status=$(baseline_status "$name")
@@ -88,15 +98,18 @@ while IFS=$'\t' read -r name cmd weight skip_if is_required run_when_json gate_t
       fi
       append_preexisting_block "$name" "$(echo "$gate_out" | tail -10)"
       CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":false"
+      append_gate_trace "$name" "preexisting" "$is_required"
       PREEXISTING_COUNT=$((PREEXISTING_COUNT + 1))
     else
       # New failure or no baseline: count normally
       if [ "$exit_code" -eq 124 ]; then
         append_gate_result "x" "$name" "timed out (${gate_timeout}s)" "0" "$weight"
         append_failure_block "$name" "Command timed out after ${gate_timeout} seconds"
+        append_gate_trace "$name" "timeout" "$is_required"
       else
         append_gate_result "x" "$name" "failed" "0" "$weight"
         append_failure_block "$name" "$(echo "$gate_out" | tail -20)"
+        append_gate_trace "$name" "fail" "$is_required"
       fi
       CHECKS_PAIRS="${CHECKS_PAIRS:+${CHECKS_PAIRS},}\"$name\":false"
       if [ "$is_required" = "true" ]; then
@@ -109,6 +122,33 @@ done < <(echo "$GATES" | jq -r '.[] | [.name, .command, (.weight | tostring), (.
 pkg_state_append '.scores' "$SCORE"
 pkg_state_write '.checks' "{${CHECKS_PAIRS}}"
 SCORES=$(pkg_state_read '.scores')
+SESSION_ID=$(ensure_session_id)
+CURRENT_PASS_FILES=$(current_pass_files_json)
+TRACE_LOG=$(pass_trace_log_path)
+PASS_TRACE_JSON=$(jq -cn \
+  --arg session_id "$SESSION_ID" \
+  --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --argjson pass "$CURRENT_PASS" \
+  --argjson score "$SCORE" \
+  --argjson total "$TOTAL" \
+  --argjson required_failed "$REQUIRED_FAILED" \
+  --argjson preexisting_failed "$PREEXISTING_COUNT" \
+  --argjson files "$CURRENT_PASS_FILES" \
+  --argjson gates "{${GATE_TRACE_PAIRS}}" \
+  '{
+    session_id: $session_id,
+    timestamp: $timestamp,
+    pass: $pass,
+    score: $score,
+    total: $total,
+    required_failed: $required_failed,
+    preexisting_failed: $preexisting_failed,
+    files: $files,
+    gates: $gates
+  }')
+append_pass_trace "$TRACE_LOG" "$PASS_TRACE_JSON"
+PROVENANCE_BLOCK=$(render_provenance_block "$TRACE_LOG" "$SESSION_ID" "$CURRENT_PASS" "PROVENANCE" 0)
+reset_current_pass_files
 
 # ── Session summary ───────────────────────────────────
 SESSIONS_LOG="$LOOPER_STATE_DIR/sessions.jsonl"
@@ -208,6 +248,11 @@ TRAJECTORY_BLOCK=$(trajectory_coaching "$SCORES" "$TOTAL" "$REMAINING") || true
 if [ -n "$TRAJECTORY_BLOCK" ]; then
   echo "" >&2
   echo "$TRAJECTORY_BLOCK" >&2
+fi
+
+if [ -n "$PROVENANCE_BLOCK" ]; then
+  echo "" >&2
+  echo "$PROVENANCE_BLOCK" >&2
 fi
 
 if [ "$REMAINING" -le 2 ]; then

@@ -6,7 +6,7 @@ Looper is a package-based improvement loop for Claude Code. It consists of two l
 
 1. **Kernel**: a minimal dispatcher (`kernel.sh` + `pkg-utils.sh`) that manages loop state, circuit breakers, and hook dispatch. It knows nothing about quality gates or specific behaviors.
 
-2. **Packages**: directories containing handler scripts that define what happens at each hook event. The bundled `quality-gates` package implements gate evaluation, scoring, per-file checks, and coaching.
+2. **Packages**: directories containing handler scripts that define what happens at each hook event. The bundled `quality-gates` package implements gate evaluation, per-pass file capture, scoring, per-file checks, provenance feedback, and coaching.
 
 The kernel is registered via the plugin's `hooks/hooks.json`. It receives hook events from Claude Code and dispatches to active package handlers.
 
@@ -106,7 +106,8 @@ Scoring, gate evaluation, coaching messages, context injection content, post-edi
 .claude/state/
   kernel.json                 # kernel-owned: iteration, status, files_touched
   quality-gates/
-    state.json                # package-owned: scores, checks, gate results
+    state.json                # package-owned: scores, checks, baseline, session_id
+    passes.jsonl              # package-owned: per-pass traces and edited files
   security-audit/
     state.json                # package-owned: findings, scan results
 ```
@@ -128,6 +129,11 @@ Status values: `running`, `complete`, `budget_exhausted`, `breaker_tripped`, `co
 ### Package State
 
 Each package owns its state directory and file entirely. Packages read/write via `pkg_state_read` and `pkg_state_write` from `pkg-utils.sh`. Packages can read other packages' state (read-only) via `pkg_read`.
+
+`quality-gates` now keeps two layers of package state:
+
+- `state.json` for session-local state such as score history, baseline snapshot, current-pass edited files, and the active `session_id`
+- `passes.jsonl` for append-only pass traces used to explain when failures first appeared and which files changed on or since that pass
 
 ## Package Format
 

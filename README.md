@@ -475,6 +475,14 @@ adjusting `max_iterations`, or adding `scope-guard`. The Stop hook also shows a
 short `Suggestions:` block during failing sessions when the signal is strong
 enough.
 
+The `quality-gates` package also records per-pass traces in
+`.claude/state/quality-gates/passes.jsonl`. Each row captures the pass number,
+score, gate statuses, and the files edited during that pass. When a gate turns
+red after being green, or stays red across multiple passes, Stop feedback adds a
+short `PROVENANCE:` block showing when the failure first appeared and which
+files changed around it. `/looper:status` shows the same signal as `Failure
+Introduction Points:` for the most recent session.
+
 > #### Built By
 >
 > Claude & Srdjan

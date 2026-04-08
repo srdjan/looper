@@ -75,3 +75,5 @@ Config:
 - enable baseline after repeated budget-exhausted sessions without baseline
 - raise or lower `max_iterations` based on recent session patterns
 - add `scope-guard` when the current session is touching many files without scope protection
+
+10. If `.claude/state/quality-gates/passes.jsonl` exists, show a compact `Failure Introduction Points:` section for the most recent session only. Use at most 3 lines. Include the first failing pass and the files changed on that pass, or since the last green pass when the failure persists across multiple passes.

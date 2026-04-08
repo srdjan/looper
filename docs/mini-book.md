@@ -38,7 +38,7 @@ PostToolUse fires after every tool invocation. When Claude edits a file, Looper 
 
 Stop fires when Claude finishes its response and tries to stop. This is where the loop lives. Looper runs every quality gate. If all required gates pass, the loop ends. If any required gate fails, Looper sends the failure output back to Claude and increments the iteration counter. Claude reads the failures, fixes them, and the cycle repeats.
 
-The system has two layers. A minimal kernel handles loop mechanics: state, dispatch, circuit breakers. Pluggable packages handle domain logic: what to check, how to score, when to stop. The bundled quality-gates package implements the classic behavior, but the architecture supports any kind of improvement cycle.
+The system has two layers. A minimal kernel handles loop mechanics: state, dispatch, circuit breakers. Pluggable packages handle domain logic: what to check, how to score, when to stop. The bundled quality-gates package implements the classic behavior, including baseline capture, session summaries, and failure provenance, but the architecture supports any kind of improvement cycle.
 
 ---
 

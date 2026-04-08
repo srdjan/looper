@@ -4,6 +4,7 @@
 
 set -euo pipefail
 source "$LOOPER_HOOKS_DIR/pkg-utils.sh"
+source "$LOOPER_PKG_DIR/lib/provenance.sh"
 
 # ── Promote incomplete session from previous run ───────
 SESSION_CURRENT="$LOOPER_STATE_DIR/session-current.json"
@@ -17,6 +18,8 @@ pkg_state_write '.scores' '[]'
 pkg_state_write '.checks' '{}'
 pkg_state_write '.satisfied' 'false'
 pkg_state_write '.baseline' 'null'
+pkg_state_write '.current_pass_files' '[]'
+ensure_session_id > /dev/null
 
 GATES=$(pkg_config '.gates // [] | [.[] | select(.enabled != false)]')
 TOTAL=$(echo "$GATES" | jq '[.[].weight] | add // 0')

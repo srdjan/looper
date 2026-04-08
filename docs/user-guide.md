@@ -563,6 +563,8 @@ Otherwise, it tracks the file being edited and injects the pass counter.
 
 The quality-gates package filters to Edit, MultiEdit, and Write tools only (via
 the `matchers` field in its manifest). Other tool types pass through untouched.
+It also records the files edited during the current pass so Stop feedback can
+later explain when a failure first appeared.
 
 ### PostToolUse
 
@@ -603,9 +605,13 @@ The kernel writes to `.claude/state/kernel.json`:
 ```
 
 Each package writes to `.claude/state/<package-name>/state.json`. The
-quality-gates package tracks scores, per-gate results, and a satisfaction flag.
+quality-gates package tracks scores, per-gate results, baseline state, the
+current pass's edited files, and a session id. It also appends per-pass traces
+to `.claude/state/quality-gates/passes.jsonl`.
 
-State is gitignored and resets on each new session.
+State is gitignored. Session-local fields reset on each new session, while
+append-only files such as `sessions.jsonl` and `quality-gates/passes.jsonl`
+persist until you remove them.
 
 ---
 
@@ -909,6 +915,11 @@ average iterations, baseline savings), the current in-progress session if one
 exists, your active configuration, and a short `Recommendations:` section when
 the recent history supports a concrete suggestion.
 
+If `quality-gates` has recorded pass traces, `/looper:status` also prints a
+`Failure Introduction Points:` section for the most recent session. It names the
+pass where a gate first went red and the files changed on that pass, or since
+the last green pass when a failure keeps repeating.
+
 The log is local-only and gitignored. It lives alongside the ephemeral state
 files in `.claude/state/`.
 
@@ -916,6 +927,10 @@ Looper also uses the same heuristics inside `quality-gates` Stop feedback. When
 a session is failing and the recommendation is high-signal, you will see a short
 `Suggestions:` block near the bottom of the report. These suggestions are
 read-only; Looper never rewrites your config automatically.
+
+When the failure history is clear enough, Stop feedback also shows a
+`PROVENANCE:` block. That block is package-level diagnosis, not kernel logic. It
+tells Claude when a gate first failed and which files changed around that turn.
 
 ---
 
@@ -942,6 +957,12 @@ Increase `max_iterations` if the task genuinely needs more passes.
 Claude might be stuck in a loop, applying the same fix and getting the same
 failure. This happens when the error message is ambiguous or when Claude cannot
 see enough context.
+
+Check the `PROVENANCE:` block in the Stop output, or the `Failure Introduction
+Points:` section in `/looper:status`. If the same gate has been red for multiple
+passes, Looper points to the first failing pass and the files changed since the
+last green pass. That usually tells you whether Claude is chasing the wrong file
+or repeatedly reintroducing the same regression.
 
 Add a `context` line explaining the fix:
 

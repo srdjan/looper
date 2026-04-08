@@ -27,3 +27,10 @@
 - Leading indicators: `/looper:status` surfaces recommendations on real history; failing sessions emit short suggestion blocks; recommendation logic stays consistent between status and Stop output
 - Guardrails: No config auto-mutation; no remote telemetry; recommendation output stays small and only appears when signal is strong enough
 - Frontier note: Frontier is now very thin. The core local-first loop, package SDK, multi-package control, analytics, and recommendations are all in place. Remaining work should be driven by real usage rather than more speculative features.
+
+## Iteration 5: Failure Provenance
+- What changed: Added per-pass trace capture to `quality-gates`. Edit hooks now record the files changed during each pass, Stop appends a trace row to `.claude/state/quality-gates/passes.jsonl`, and failing Stop output can emit a `PROVENANCE:` block that explains when a gate first went red and which files changed around that point. `/looper:status` now shows the same signal as `Failure Introduction Points:` for the latest session.
+- Primary metric: Reduction in wasted retries caused by Claude fixing the wrong file or chasing an old failure without knowing when it started
+- Leading indicators: Failing sessions include concrete provenance output; persistent failures point to a first failing pass; status output surfaces the same diagnosis without replaying the session
+- Guardrails: Keep provenance in the package layer, not the kernel; no diff snapshots or content copies; no provenance output for baseline-marked pre-existing failures
+- Frontier note: The control loop now has better local diagnosis. The next moves should come from usage data, not from adding more speculative package behavior.

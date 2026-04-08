@@ -20,7 +20,7 @@ If you want an agent to improve its own work, the loop should live where the wor
 
 That is why Looper is more interesting than a collection of shell scripts. The shell is only the implementation detail. The real idea is native control. Looper is close enough to Claude Code to enforce rules in real time, but simple enough that the control plane stays readable.
 
-The architecture follows that decision. The kernel is small. It owns state, budget, circuit breakers, handler dispatch, and package resolution. It does not know what "quality" means for your project. Packages define that. The default `quality-gates` package handles the common case: typecheck, lint, test, coverage, per-file checks, coaching, baseline capture, and session summaries. Other packages can add different constraints without changing the kernel.
+The architecture follows that decision. The kernel is small. It owns state, budget, circuit breakers, handler dispatch, and package resolution. It does not know what "quality" means for your project. Packages define that. The default `quality-gates` package handles the common case: typecheck, lint, test, coverage, per-file checks, coaching, baseline capture, session summaries, and failure provenance. Other packages can add different constraints without changing the kernel.
 
 That separation matters because the job of a loop kernel is not to be smart. It is to be reliable.
 

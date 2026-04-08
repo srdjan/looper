@@ -767,6 +767,37 @@ assert_eq "post-edit: non-matching tool produces no output" "" "$(cat "$CHK_STDO
 
 rm -rf "$FIXTURE_CHECKS" "$CHK_STDOUT" "$CHK_STDERR"
 
+# ── quality-gates: pass provenance ─────────────────────
+
+echo ""
+echo "-- quality-gates: provenance -------------"
+
+FIXTURE_PROV=$(make_fixture)
+install_package "$FIXTURE_PROV" "quality-gates"
+cat > "$FIXTURE_PROV/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 5,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "gates": [{ "name": "pass-gate", "command": "true", "weight": 100 }]
+  }
+}
+EOF
+
+PROV_STDOUT=$(mktemp); PROV_STDERR=$(mktemp)
+run_kernel "$FIXTURE_PROV" "SessionStart" "" "$PROV_STDOUT" "$PROV_STDERR"
+run_kernel "$FIXTURE_PROV" "PreToolUse" '{"tool_name":"Edit","tool_input":{"file_path":"src/a.ts"}}' "$PROV_STDOUT" "$PROV_STDERR"
+run_kernel "$FIXTURE_PROV" "PreToolUse" '{"tool_name":"Edit","tool_input":{"file_path":"src/b.ts"}}' "$PROV_STDOUT" "$PROV_STDERR"
+run_kernel "$FIXTURE_PROV" "PreToolUse" '{"tool_name":"Edit","tool_input":{"file_path":"src/a.ts"}}' "$PROV_STDOUT" "$PROV_STDERR"
+assert_eq "provenance: current pass files dedupe" "2" "$(jq -r '.current_pass_files | length' "$FIXTURE_PROV/.claude/state/quality-gates/state.json")"
+
+run_kernel "$FIXTURE_PROV" "Stop" '{"stop_hook_active":false}' "$PROV_STDOUT" "$PROV_STDERR"
+assert_eq "provenance: stop exits 0" "0" "$?"
+assert_eq "provenance: current pass files reset after stop" "0" "$(jq -r '.current_pass_files | length' "$FIXTURE_PROV/.claude/state/quality-gates/state.json")"
+assert_eq "provenance: pass trace files recorded" "2" "$(tail -n 1 "$FIXTURE_PROV/.claude/state/quality-gates/passes.jsonl" | jq -r '.files | length')"
+
+rm -rf "$FIXTURE_PROV" "$PROV_STDOUT" "$PROV_STDERR"
+
 # ── kernel: context injection ───────────────────────────
 
 echo ""
@@ -1304,6 +1335,126 @@ assert_contains "adaptive coaching: baseline suggestion shown" 'Consider enablin
 assert_contains "adaptive coaching: scope-guard suggestion shown" 'Consider adding `scope-guard`' "$(cat "$REC2_STDERR")"
 
 rm -rf "$FIXTURE_REC2" "$REC2_STDOUT" "$REC2_STDERR"
+
+# ── failure provenance -------------------------------
+
+echo ""
+echo "-- failure provenance ---------------------"
+
+FIXTURE_FP=$(make_fixture)
+install_package "$FIXTURE_FP" "quality-gates"
+cat > "$FIXTURE_FP/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "gates": [
+      { "name": "loop-blocker", "command": "test ! -f keep-looping.flag", "weight": 40 },
+      { "name": "regression-gate", "command": "test ! -f regress.flag", "weight": 60 }
+    ]
+  }
+}
+EOF
+touch "$FIXTURE_FP/keep-looping.flag"
+
+FP_STDOUT=$(mktemp); FP_STDERR=$(mktemp)
+run_kernel "$FIXTURE_FP" "SessionStart" "" "$FP_STDOUT" "$FP_STDERR"
+run_kernel "$FIXTURE_FP" "PreToolUse" '{"tool_name":"Edit","tool_input":{"file_path":"src/seed.ts"}}' "$FP_STDOUT" "$FP_STDERR"
+run_kernel "$FIXTURE_FP" "Stop" '{"stop_hook_active":false}' "$FP_STDOUT" "$FP_STDERR"
+assert_eq "provenance: first pass exits 2" "2" "$?"
+
+rm -f "$FIXTURE_FP/keep-looping.flag"
+touch "$FIXTURE_FP/regress.flag"
+run_kernel "$FIXTURE_FP" "PreToolUse" '{"tool_name":"Edit","tool_input":{"file_path":"src/user.ts"}}' "$FP_STDOUT" "$FP_STDERR"
+run_kernel "$FIXTURE_FP" "Stop" '{"stop_hook_active":false}' "$FP_STDOUT" "$FP_STDERR"
+assert_eq "provenance: second pass exits 2" "2" "$?"
+assert_contains "provenance: introduced gate heading shown" "PROVENANCE:" "$(cat "$FP_STDERR")"
+assert_contains "provenance: introduced gate names pass" "Pass 2 introduced regression-gate." "$(cat "$FP_STDERR")"
+assert_contains "provenance: introduced gate names edited file" "src/user.ts" "$(cat "$FP_STDERR")"
+
+rm -rf "$FIXTURE_FP" "$FP_STDOUT" "$FP_STDERR"
+
+FIXTURE_FP2=$(make_fixture)
+install_package "$FIXTURE_FP2" "quality-gates"
+cat > "$FIXTURE_FP2/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "gates": [{ "name": "sticky-fail", "command": "test ! -f sticky.flag", "weight": 100 }]
+  }
+}
+EOF
+touch "$FIXTURE_FP2/sticky.flag"
+
+FP2_STDOUT=$(mktemp); FP2_STDERR=$(mktemp)
+run_kernel "$FIXTURE_FP2" "SessionStart" "" "$FP2_STDOUT" "$FP2_STDERR"
+run_kernel "$FIXTURE_FP2" "PreToolUse" '{"tool_name":"Edit","tool_input":{"file_path":"src/a.ts"}}' "$FP2_STDOUT" "$FP2_STDERR"
+run_kernel "$FIXTURE_FP2" "Stop" '{"stop_hook_active":false}' "$FP2_STDOUT" "$FP2_STDERR"
+assert_eq "provenance: persistent failure first pass exits 2" "2" "$?"
+
+run_kernel "$FIXTURE_FP2" "PreToolUse" '{"tool_name":"Edit","tool_input":{"file_path":"src/b.ts"}}' "$FP2_STDOUT" "$FP2_STDERR"
+run_kernel "$FIXTURE_FP2" "Stop" '{"stop_hook_active":false}' "$FP2_STDOUT" "$FP2_STDERR"
+assert_eq "provenance: persistent failure second pass exits 2" "2" "$?"
+assert_contains "provenance: persistent gate names first failing pass" "Pass 1 is the first failing pass for sticky-fail." "$(cat "$FP2_STDERR")"
+assert_contains "provenance: persistent gate includes first file" "src/a.ts" "$(cat "$FP2_STDERR")"
+assert_contains "provenance: persistent gate includes second file" "src/b.ts" "$(cat "$FP2_STDERR")"
+
+rm -rf "$FIXTURE_FP2" "$FP2_STDOUT" "$FP2_STDERR"
+
+FIXTURE_FP3=$(make_fixture)
+install_package "$FIXTURE_FP3" "quality-gates"
+cat > "$FIXTURE_FP3/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "baseline": true,
+    "gates": [{ "name": "baseline-fail", "command": "false", "weight": 100 }]
+  }
+}
+EOF
+
+FP3_STDOUT=$(mktemp); FP3_STDERR=$(mktemp)
+run_kernel "$FIXTURE_FP3" "SessionStart" "" "$FP3_STDOUT" "$FP3_STDERR"
+run_kernel "$FIXTURE_FP3" "PreToolUse" '{"tool_name":"Edit","tool_input":{"file_path":"src/ignored.ts"}}' "$FP3_STDOUT" "$FP3_STDERR"
+run_kernel "$FIXTURE_FP3" "Stop" '{"stop_hook_active":false}' "$FP3_STDOUT" "$FP3_STDERR"
+assert_eq "provenance: baseline failure exits 0" "0" "$?"
+if grep -Fq "PROVENANCE:" "$FP3_STDERR"; then
+  FAIL=$((FAIL + 1))
+  ERRORS="${ERRORS}\n  x provenance: baseline failures do not emit provenance"
+  echo "  x provenance: baseline failures do not emit provenance"
+else
+  PASS=$((PASS + 1))
+  echo "  v provenance: baseline failures do not emit provenance"
+fi
+
+rm -rf "$FIXTURE_FP3" "$FP3_STDOUT" "$FP3_STDERR"
+
+FIXTURE_REC3=$(make_fixture)
+mkdir -p "$FIXTURE_REC3/.claude/state/quality-gates"
+cat > "$FIXTURE_REC3/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates"],
+  "quality-gates": {
+    "gates": [{ "name": "sticky-fail", "command": "false", "weight": 100 }]
+  }
+}
+EOF
+cat > "$FIXTURE_REC3/.claude/state/sessions.jsonl" <<'EOF'
+{"status":"budget_exhausted","timestamp":"2025-01-03T00:00:00Z","iteration":2,"max_iterations":10,"score":0,"total":100,"introduced_failures":1,"preexisting_failures":0,"score_history":[0,0]}
+EOF
+cat > "$FIXTURE_REC3/.claude/state/quality-gates/passes.jsonl" <<'EOF'
+{"session_id":"s-1","timestamp":"2025-01-03T00:00:00Z","pass":1,"score":0,"total":100,"required_failed":1,"preexisting_failed":0,"files":["src/a.ts"],"gates":{"sticky-fail":{"status":"fail","required":true}}}
+{"session_id":"s-1","timestamp":"2025-01-03T00:01:00Z","pass":2,"score":0,"total":100,"required_failed":1,"preexisting_failed":0,"files":["src/b.ts"],"gates":{"sticky-fail":{"status":"fail","required":true}}}
+EOF
+
+REC3_STATUS_OUT=$(bash "$PROJECT_DIR/packages/quality-gates/lib/status-report.sh" "$FIXTURE_REC3")
+assert_contains "status-report: provenance heading shown" "Failure Introduction Points:" "$REC3_STATUS_OUT"
+assert_contains "status-report: provenance names first failing pass" "Pass 1 is the first failing pass for sticky-fail." "$REC3_STATUS_OUT"
+
+rm -rf "$FIXTURE_REC3"
 
 # ── Trajectory analysis ─────────────────────────────────
 

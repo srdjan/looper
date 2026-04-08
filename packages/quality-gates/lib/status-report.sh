@@ -13,6 +13,7 @@ KERNEL_STATE="$STATE_DIR/kernel.json"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 source "$SCRIPT_DIR/recommendations.sh"
+source "$SCRIPT_DIR/provenance.sh"
 
 print_runtime_block() {
   local kernel_state="$1"
@@ -103,6 +104,16 @@ if [ -f "$CONFIG" ]; then
   if [ -n "$RECOMMENDATION_BLOCK" ]; then
     echo ""
     echo "$RECOMMENDATION_BLOCK"
+  fi
+fi
+
+TRACE_LOG=$(pass_trace_log_path "$STATE_DIR/quality-gates")
+IFS=$'\t' read -r TRACE_SESSION_ID TRACE_PASS < <(latest_trace_context "$TRACE_LOG" || true)
+if [ -n "${TRACE_SESSION_ID:-}" ] && [ -n "${TRACE_PASS:-}" ] && [ "$TRACE_PASS" != "0" ]; then
+  PROVENANCE_BLOCK=$(render_provenance_block "$TRACE_LOG" "$TRACE_SESSION_ID" "$TRACE_PASS" "Failure Introduction Points" 3)
+  if [ -n "$PROVENANCE_BLOCK" ]; then
+    echo ""
+    echo "$PROVENANCE_BLOCK"
   fi
 fi
 
