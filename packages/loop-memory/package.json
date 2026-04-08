@@ -1,0 +1,10 @@
+{
+  "name": "loop-memory",
+  "version": "0.1.0",
+  "description": "Cross-session learning from quality-gates history",
+  "runtime": "deno",
+  "phase": "core",
+  "matchers": {
+    "PreToolUse": "Edit|MultiEdit|Write"
+  }
+}
