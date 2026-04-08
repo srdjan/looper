@@ -1,4 +1,4 @@
-import { defineConfig, definePackage, defineState } from "../../sdk/typescript/mod.ts";
+import { defineConfig, definePackage, defineState, matchesAny } from "../../sdk/typescript/mod.ts";
 
 type ScopeConfig = {
   readonly blocked: readonly string[];
@@ -34,26 +34,6 @@ const parseState = (raw: unknown): ScopeState => {
   };
 };
 
-const globMatch = (path: string, pattern: string): boolean => {
-  let s = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  // Replace ** patterns with placeholders to prevent glob * and ? from mangling them
-  s = s.replace(/\/\*\*\//g, "\x01");  // /**/
-  s = s.replace(/^\*\*\//, "\x02");    // leading **/
-  s = s.replace(/\/\*\*$/, "\x03");    // trailing /**
-  s = s.replace(/\*\*/g, "\x04");      // standalone **
-  // Now safely replace single-char glob tokens
-  s = s.replace(/\*/g, "[^/]*");
-  s = s.replace(/\?/g, "[^/]");
-  // Expand placeholders into regex fragments
-  s = s.replace(/\x01/g, "/(.+/)?");   // /**/  -> zero or more segments
-  s = s.replace(/\x02/g, "(.+/)?");    // **/   -> zero or more leading
-  s = s.replace(/\x03/g, "(/.+)?");    // /**   -> zero or more trailing
-  s = s.replace(/\x04/g, ".*");        // **    -> anything
-  return new RegExp(`^${s}$`).test(path);
-};
-
-const matchesAny = (path: string, patterns: readonly string[]): boolean =>
-  patterns.some((p) => globMatch(path, p));
 
 const extractFilePath = (input: unknown): string | null => {
   if (typeof input !== "object" || input === null) return null;

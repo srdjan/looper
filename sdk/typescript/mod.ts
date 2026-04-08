@@ -1,5 +1,7 @@
 export { loadRuntimeEnv } from "./env.ts";
+export { globMatch, matchesAny } from "./glob.ts";
 export { createScaffoldFiles } from "./scaffold.ts";
+export { runShell } from "./shell.ts";
 export { createStateStore } from "./state.ts";
 export { executeHook } from "./runtime.ts";
 export { testHook } from "./testing.ts";

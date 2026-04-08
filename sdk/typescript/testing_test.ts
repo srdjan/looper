@@ -3,6 +3,7 @@ import {
   defineConfig,
   definePackage,
   defineState,
+  runShell,
   testHook,
 } from "./mod.ts";
 import {
@@ -101,6 +102,26 @@ Deno.test({
     assertEquals(result.stderr, "ok:1");
     assertEquals(result.state.runs, 1);
   },
+});
+
+Deno.test("runShell wraps shell commands in bash -lc", async () => {
+  const result = await runShell(
+    async (request) => {
+      assertEquals(request.command, ["bash", "-lc", "printf ok"]);
+      assertEquals(request.timeoutMs, 2500);
+      return {
+        ok: true,
+        code: 0,
+        stdout: "ok",
+        stderr: "",
+      };
+    },
+    "printf ok",
+    { timeoutMs: 2500 },
+  );
+
+  assertEquals(result.ok, true);
+  assertEquals(result.stdout, "ok");
 });
 
 Deno.test("scaffold creates kernel-compatible files", () => {

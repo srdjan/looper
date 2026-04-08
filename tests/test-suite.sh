@@ -1024,6 +1024,156 @@ assert_contains "scope-guard+qg: reports violation" "outside allowed scope" "$(c
 
 rm -rf "$FIXTURE_SG2" "$SG2_STDOUT" "$SG2_STDERR"
 
+# ── acceptance-flows package ──────────────────────────
+
+echo ""
+echo "-- acceptance-flows package ---------------"
+
+FIXTURE_AF=$(make_fixture)
+mkdir -p "$FIXTURE_AF/scripts"
+cat > "$FIXTURE_AF/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates", "acceptance-flows"],
+  "quality-gates": {
+    "gates": [{ "name": "pass-gate", "command": "true", "weight": 100 }]
+  },
+  "acceptance-flows": {
+    "tail_lines": 2,
+    "flows": [
+      {
+        "name": "api-smoke",
+        "command": "./scripts/api-smoke.sh",
+        "timeout": 30,
+        "run_when": ["src/api/**/*"],
+        "required": true
+      },
+      {
+        "name": "docs-preview",
+        "command": "./scripts/docs-preview.sh",
+        "timeout": 30,
+        "run_when": ["docs/**/*"],
+        "required": false
+      }
+    ]
+  }
+}
+EOF
+cat > "$FIXTURE_AF/scripts/api-smoke.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "api smoke failed"
+echo "trace tail line 1" >&2
+echo "trace tail line 2" >&2
+exit 1
+EOF
+cat > "$FIXTURE_AF/scripts/docs-preview.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "docs preview ok"
+exit 0
+EOF
+chmod +x "$FIXTURE_AF/scripts/api-smoke.sh" "$FIXTURE_AF/scripts/docs-preview.sh"
+
+AF_STDOUT=$(mktemp); AF_STDERR=$(mktemp)
+run_kernel "$FIXTURE_AF" "SessionStart" "" "$AF_STDOUT" "$AF_STDERR"
+assert_eq "acceptance-flows: session start exits 0" "0" "$?"
+assert_contains "acceptance-flows: session start mentions package" "Acceptance Flows" "$(cat "$AF_STDOUT")"
+assert_contains "acceptance-flows: session start lists api-smoke" "api-smoke [required]" "$(cat "$AF_STDOUT")"
+
+jq -n '{ iteration: 0, max_iterations: 10, status: "running", files_touched: ["src/api/route.ts"] }' > "$FIXTURE_AF/.claude/state/kernel.json"
+mkdir -p "$FIXTURE_AF/.claude/state/quality-gates"
+echo '{"scores":[],"checks":{},"satisfied":false,"baseline":null}' > "$FIXTURE_AF/.claude/state/quality-gates/state.json"
+
+run_kernel "$FIXTURE_AF" "Stop" '{"stop_hook_active":false}' "$AF_STDOUT" "$AF_STDERR"
+assert_eq "acceptance-flows: required failure exits 2" "2" "$?"
+assert_contains "acceptance-flows: feedback includes package header" "acceptance-flows" "$(cat "$AF_STDERR")"
+assert_contains "acceptance-flows: required failure heading shown" "Required flow failures:" "$(cat "$AF_STDERR")"
+assert_eq "acceptance-flows: result status persisted" "fail" "$(jq -r '.results["api-smoke"].status' "$FIXTURE_AF/.claude/state/acceptance-flows/state.json")"
+assert_eq "acceptance-flows: run_when skip persisted" "skipped" "$(jq -r '.results["docs-preview"].status' "$FIXTURE_AF/.claude/state/acceptance-flows/state.json")"
+assert_true "acceptance-flows: stdout artifact written" test -f "$FIXTURE_AF/.claude/state/acceptance-flows/artifacts/api-smoke.stdout.log"
+assert_true "acceptance-flows: stderr artifact written" test -f "$FIXTURE_AF/.claude/state/acceptance-flows/artifacts/api-smoke.stderr.log"
+
+rm -rf "$FIXTURE_AF" "$AF_STDOUT" "$AF_STDERR"
+
+FIXTURE_AF2=$(make_fixture)
+mkdir -p "$FIXTURE_AF2/scripts"
+cat > "$FIXTURE_AF2/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates", "acceptance-flows"],
+  "quality-gates": {
+    "gates": [{ "name": "pass-gate", "command": "true", "weight": 100 }]
+  },
+  "acceptance-flows": {
+    "flows": [
+      {
+        "name": "api-smoke",
+        "command": "./scripts/api-smoke.sh",
+        "required": true
+      },
+      {
+        "name": "docs-preview",
+        "command": "./scripts/docs-preview.sh",
+        "required": false
+      }
+    ]
+  }
+}
+EOF
+cat > "$FIXTURE_AF2/scripts/api-smoke.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "api smoke ok"
+exit 0
+EOF
+cat > "$FIXTURE_AF2/scripts/docs-preview.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "preview broke" >&2
+exit 1
+EOF
+chmod +x "$FIXTURE_AF2/scripts/api-smoke.sh" "$FIXTURE_AF2/scripts/docs-preview.sh"
+jq -n '{ iteration: 0, max_iterations: 10, status: "running", files_touched: ["src/api/route.ts"] }' > "$FIXTURE_AF2/.claude/state/kernel.json"
+mkdir -p "$FIXTURE_AF2/.claude/state/quality-gates"
+echo '{"scores":[],"checks":{},"satisfied":false,"baseline":null}' > "$FIXTURE_AF2/.claude/state/quality-gates/state.json"
+
+AF2_STDOUT=$(mktemp); AF2_STDERR=$(mktemp)
+run_kernel "$FIXTURE_AF2" "Stop" '{"stop_hook_active":false}' "$AF2_STDOUT" "$AF2_STDERR"
+assert_eq "acceptance-flows: optional failure does not block" "0" "$?"
+assert_contains "acceptance-flows: optional failure section shown" "Optional flow failures (non-blocking):" "$(cat "$AF2_STDERR")"
+assert_eq "acceptance-flows: required pass persisted" "pass" "$(jq -r '.results["api-smoke"].status' "$FIXTURE_AF2/.claude/state/acceptance-flows/state.json")"
+assert_eq "acceptance-flows: optional failure persisted" "fail" "$(jq -r '.results["docs-preview"].status' "$FIXTURE_AF2/.claude/state/acceptance-flows/state.json")"
+
+rm -rf "$FIXTURE_AF2" "$AF2_STDOUT" "$AF2_STDERR"
+
+FIXTURE_AF3=$(make_fixture)
+cat > "$FIXTURE_AF3/.claude/looper.json" <<'EOF'
+{
+  "max_iterations": 10,
+  "packages": ["quality-gates", "acceptance-flows"],
+  "quality-gates": {
+    "gates": [{ "name": "fail-gate", "command": "false", "weight": 100 }]
+  },
+  "acceptance-flows": {
+    "flows": [
+      {
+        "name": "api-smoke",
+        "command": "echo should-not-run",
+        "required": true
+      }
+    ]
+  }
+}
+EOF
+jq -n '{ iteration: 0, max_iterations: 10, status: "running", files_touched: ["src/api/route.ts"] }' > "$FIXTURE_AF3/.claude/state/kernel.json"
+mkdir -p "$FIXTURE_AF3/.claude/state/quality-gates"
+echo '{"scores":[],"checks":{},"satisfied":false,"baseline":null}' > "$FIXTURE_AF3/.claude/state/quality-gates/state.json"
+
+AF3_STDOUT=$(mktemp); AF3_STDERR=$(mktemp)
+run_kernel "$FIXTURE_AF3" "Stop" '{"stop_hook_active":false}' "$AF3_STDOUT" "$AF3_STDERR"
+assert_eq "acceptance-flows: core failure keeps post phase from running" "2" "$?"
+assert_false "acceptance-flows: no post-phase state written when core fails" test -f "$FIXTURE_AF3/.claude/state/acceptance-flows/state.json"
+assert_false "acceptance-flows: no post-phase feedback when core fails" grep -F "acceptance-flows:" "$AF3_STDERR"
+
+rm -rf "$FIXTURE_AF3" "$AF3_STDOUT" "$AF3_STDERR"
+
 # ── session summaries ─────────────────────────────────
 
 echo ""

@@ -1,0 +1,7 @@
+{
+  "name": "acceptance-flows",
+  "version": "1.0.0",
+  "description": "Runs local acceptance and smoke flows after core quality gates pass",
+  "runtime": "deno",
+  "phase": "post"
+}
